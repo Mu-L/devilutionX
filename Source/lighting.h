@@ -19,7 +19,6 @@ typedef struct LightListStruct {
 	int _lid;
 	int _ldel;
 	int _lunflag;
-	int field_18;
 	int _lunx;
 	int _luny;
 	int _lunr;

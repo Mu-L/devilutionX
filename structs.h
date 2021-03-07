@@ -107,7 +107,6 @@ typedef struct MonsterStruct { // note: missing field _mAFNum
 	int _mgoalvar1;
 	int _mgoalvar2;
 	int _mgoalvar3;
-	int field_18;
 	unsigned char _pathcount;
 	int _mx;                // Tile X-position of monster
 	int _my;                // Tile Y-position of monster
@@ -123,7 +122,6 @@ typedef struct MonsterStruct { // note: missing field _mAFNum
 	int _menemy;            // The current target of the mosnter. An index in to either the plr or monster array based on the _meflag value.
 	unsigned char _menemyx; // X-coordinate of enemy (usually correspond's to the enemy's futx value)
 	unsigned char _menemyy; // Y-coordinate of enemy (usually correspond's to the enemy's futy value)
-	short falign_52;        // probably _mAFNum (unused)
 	unsigned char *_mAnimData;
 	int _mAnimDelay; // Tick length of each frame in the current animation
 	int _mAnimCnt;   // Increases by one each game tick, counting how close we are to _pAnimDelay
@@ -143,15 +141,12 @@ typedef struct MonsterStruct { // note: missing field _mAFNum
 	int _mhitpoints;
 	unsigned char _mAi;
 	unsigned char _mint;
-	short falign_9A;
 	int _mFlags;
 	BYTE _msquelch;
-	int falign_A4;
 	int _lastx;
 	int _lasty;
 	int _mRndSeed;
 	int _mAISeed;
-	int falign_B8;
 	unsigned char _uniqtype;
 	unsigned char _uniqtrans;
 	char _udeadval;
@@ -165,7 +160,6 @@ typedef struct MonsterStruct { // note: missing field _mAFNum
 	unsigned char mMinDamage2;
 	unsigned char mMaxDamage2;
 	unsigned char mArmorClass;
-	char falign_CB;
 	unsigned short mMagicRes;
 	int mtalkmsg;
 	unsigned char leader;
