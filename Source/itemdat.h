@@ -5,7 +5,6 @@
  */
 #pragma once
 
-
 #include <cstdint>
 
 #include "objdat.h"
@@ -14,7 +13,7 @@
 namespace devilution {
 
 /** @todo add missing values and apply */
-enum _item_indexes : uint8_t {
+enum _item_indexes : int16_t {
 	IDI_GOLD,
 	IDI_WARRIOR,
 	IDI_WARRSHLD,
@@ -65,6 +64,7 @@ enum _item_indexes : uint8_t {
 	IDI_FULLNOTE,
 	IDI_BROWNSUIT,
 	IDI_GREYSUIT,
+	IDI_NONE = -1,
 };
 
 enum item_drop_rate : uint8_t {
@@ -222,22 +222,22 @@ enum item_cursor_graphic : uint8_t {
 	// clang-format on
 };
 
-enum item_type : int8_t {
-	ITYPE_MISC,
-	ITYPE_SWORD,
-	ITYPE_AXE,
-	ITYPE_BOW,
-	ITYPE_MACE,
-	ITYPE_SHIELD,
-	ITYPE_LARMOR,
-	ITYPE_HELM,
-	ITYPE_MARMOR,
-	ITYPE_HARMOR,
-	ITYPE_STAFF,
-	ITYPE_GOLD,
-	ITYPE_RING,
-	ITYPE_AMULET,
-	ITYPE_NONE = -1,
+enum class ItemType : int8_t {
+	Misc,
+	Sword,
+	Axe,
+	Bow,
+	Mace,
+	Shield,
+	LightArmor,
+	Helm,
+	MediumArmor,
+	HeavyArmor,
+	Staff,
+	Gold,
+	Ring,
+	Amulet,
+	None = -1,
 };
 
 enum unique_base_item : int8_t {
@@ -352,6 +352,18 @@ enum item_special_effect {
 	// clang-format on
 };
 
+typedef enum item_special_effect_hf {
+	// clang-format off
+	ISPLHF_DEVASTATION  = 1 << 0,
+	ISPLHF_DECAY        = 1 << 1,
+	ISPLHF_PERIL        = 1 << 2,
+	ISPLHF_JESTERS      = 1 << 3,
+	ISPLHF_DOPPELGANGER = 1 << 4,
+	ISPLHF_ACDEMON      = 1 << 5,
+	ISPLHF_ACUNDEAD     = 1 << 6,
+	// clang-format on
+} item_special_effect_hf;
+
 enum item_misc_id : int8_t {
 	IMISC_NONE,
 	IMISC_USEFIRST,
@@ -411,12 +423,12 @@ enum item_misc_id : int8_t {
 	IMISC_INVALID = -1,
 };
 
-struct ItemDataStruct {
+struct ItemData {
 	enum item_drop_rate iRnd;
 	enum item_class iClass;
 	enum item_equip_type iLoc;
 	enum item_cursor_graphic iCurs;
-	enum item_type itype;
+	enum ItemType itype;
 	enum unique_base_item iItemId;
 	const char *iName;
 	const char *iSName;
@@ -434,7 +446,6 @@ struct ItemDataStruct {
 	enum spell_id iSpell;
 	bool iUsable;
 	uint16_t iValue;
-	uint16_t iMaxValue;
 };
 
 enum item_effect_type : int8_t {
@@ -485,14 +496,14 @@ enum item_effect_type : int8_t {
 	IPL_INVCURS,
 	IPL_THORNS,
 	IPL_NOMANA,
-	IPL_NOHEALPLR,
-	IPL_0x30,     // Unknown
-	IPL_0x31,     // Unknown
-	IPL_FIREBALL, /* only used in hellfire */
-	IPL_0x33,     // Unknown
+	IPL_NOHEALPLR, // unused
+	IPL_0x30,      // Unknown
+	IPL_0x31,      // Unknown
+	IPL_FIREBALL,  /* only used in hellfire */
+	IPL_0x33,      // Unknown
 	IPL_ABSHALFTRAP,
 	IPL_KNOCKBACK,
-	IPL_NOHEALMON,
+	IPL_NOHEALMON, // unused
 	IPL_STEALMANA,
 	IPL_STEALLIFE,
 	IPL_TARGAC,
@@ -505,24 +516,24 @@ enum item_effect_type : int8_t {
 	IPL_SETDUR,
 	IPL_NOMINSTR,
 	IPL_SPELL,
-	IPL_FASTSWING,
+	IPL_FASTSWING, // unused
 	IPL_ONEHAND,
 	IPL_3XDAMVDEM,
 	IPL_ALLRESZERO,
 	IPL_0x47, // Unknown
 	IPL_DRAINLIFE,
 	IPL_RNDSTEALLIFE,
-	IPL_INFRAVISION,
+	IPL_INFRAVISION, // unused
 	IPL_SETAC,
 	IPL_ADDACLIFE,
 	IPL_ADDMANAAC,
-	IPL_FIRERESCLVL,
+	IPL_FIRERESCLVL, // unused
 	IPL_AC_CURSE,
 	IDI_LASTDIABLO = IPL_AC_CURSE,
 	IPL_FIRERES_CURSE,
 	IPL_LIGHTRES_CURSE,
 	IPL_MAGICRES_CURSE,
-	IPL_ALLRES_CURSE,
+	IPL_ALLRES_CURSE, // unused
 	IPL_DEVASTATION,
 	IPL_DECAY,
 	IPL_PERIL,
@@ -553,50 +564,37 @@ enum affix_item_type : uint8_t {
 	// clang-format on
 };
 
+struct ItemPower {
+	item_effect_type type;
+	int param1;
+	int param2;
+};
+
 struct PLStruct {
 	const char *PLName;
-	enum item_effect_type PLPower;
-	int PLParam1;
-	int PLParam2;
+	ItemPower power;
 	int8_t PLMinLvl;
 	int PLIType; // affix_item_type as bit flags
 	enum goodorevil PLGOE;
 	bool PLDouble;
 	bool PLOk;
-	int PLMinVal;
-	int PLMaxVal;
-	int PLMultVal;
+	int minVal;
+	int maxVal;
+	int multVal;
 };
 
-struct UItemStruct {
+struct UniqueItem {
 	const char *UIName;
 	enum unique_base_item UIItemId;
 	int8_t UIMinLvl;
-	int8_t UINumPL;
+	uint8_t UINumPL;
 	int UIValue;
-	enum item_effect_type UIPower1;
-	int UIParam1;
-	int UIParam2;
-	enum item_effect_type UIPower2;
-	int UIParam3;
-	int UIParam4;
-	enum item_effect_type UIPower3;
-	int UIParam5;
-	int UIParam6;
-	enum item_effect_type UIPower4;
-	int UIParam7;
-	int UIParam8;
-	enum item_effect_type UIPower5;
-	int UIParam9;
-	int UIParam10;
-	enum item_effect_type UIPower6;
-	int UIParam11;
-	int UIParam12;
+	ItemPower powers[6];
 };
 
-extern ItemDataStruct AllItemsList[];
-extern const PLStruct PL_Prefix[];
-extern const PLStruct PL_Suffix[];
-extern const UItemStruct UniqueItemList[];
+extern ItemData AllItemsList[];
+extern const PLStruct ItemPrefixes[];
+extern const PLStruct ItemSuffixes[];
+extern const UniqueItem UniqueItems[];
 
 } // namespace devilution

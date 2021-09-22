@@ -1,15 +1,32 @@
 #include "DiabloUI/art_draw.h"
 
 #include "DiabloUI/diabloui.h"
-#include "render.h"
 #include "utils/display.h"
 #include "utils/sdl_compat.h"
+#include "palette.h"
 
 namespace devilution {
 
-void DrawArt(Sint16 screenX, Sint16 screenY, Art *art, int nFrame, Uint16 srcW, Uint16 srcH)
+void UpdatePalette(Art *art, const SDL_Surface *output)
 {
-	if (screenY >= gnScreenHeight || screenX >= gnScreenWidth || art->surface == nullptr)
+	if (art->surface->format->BitsPerPixel != 8)
+		return;
+
+	if (art->palette_version == pal_surface_palette_version)
+		return;
+
+	if (output == nullptr || output->format->BitsPerPixel != 8)
+		output = PalSurface;
+
+	if (SDLC_SetSurfaceColors(art->surface.get(), output->format->palette) <= -1)
+		ErrSdl();
+
+	art->palette_version = pal_surface_palette_version;
+}
+
+void DrawArt(Point screenPosition, Art *art, int nFrame, Uint16 srcW, Uint16 srcH)
+{
+	if (screenPosition.y >= gnScreenHeight || screenPosition.x >= gnScreenWidth || art->surface == nullptr)
 		return;
 
 	SDL_Rect srcRect;
@@ -24,22 +41,18 @@ void DrawArt(Sint16 screenX, Sint16 screenY, Art *art, int nFrame, Uint16 srcW, 
 		srcRect.w = srcW;
 	if (srcH != 0 && srcH < srcRect.h)
 		srcRect.h = srcH;
-	SDL_Rect dstRect = { screenX, screenY, srcRect.w, srcRect.h };
+	SDL_Rect dstRect = MakeSdlRect(screenPosition.x, screenPosition.y, srcRect.w, srcRect.h);
 	ScaleOutputRect(&dstRect);
 
-	if (art->surface->format->BitsPerPixel == 8 && art->palette_version != pal_surface_palette_version) {
-		if (SDLC_SetSurfaceColors(art->surface.get(), pal_surface->format->palette) <= -1)
-			ErrSdl();
-		art->palette_version = pal_surface_palette_version;
-	}
+	UpdatePalette(art);
 
 	if (SDL_BlitSurface(art->surface.get(), &srcRect, DiabloUiSurface(), &dstRect) < 0)
 		ErrSdl();
 }
 
-void DrawArt(const CelOutputBuffer &out, Sint16 screenX, Sint16 screenY, Art *art, int nFrame, Uint16 srcW, Uint16 srcH)
+void DrawArt(const Surface &out, Point screenPosition, Art *art, int nFrame, Uint16 srcW, Uint16 srcH)
 {
-	if (screenY >= gnScreenHeight || screenX >= gnScreenWidth || art->surface == nullptr)
+	if (screenPosition.y >= gnScreenHeight || screenPosition.x >= gnScreenWidth || art->surface == nullptr)
 		return;
 
 	SDL_Rect srcRect;
@@ -52,25 +65,18 @@ void DrawArt(const CelOutputBuffer &out, Sint16 screenX, Sint16 screenY, Art *ar
 		srcRect.w = srcW;
 	if (srcH != 0 && srcH < srcRect.h)
 		srcRect.h = srcH;
-	SDL_Rect dstRect;
-	dstRect.x = BUFFER_BORDER_LEFT + screenX;
-	dstRect.y = BUFFER_BORDER_TOP + screenY;
-	dstRect.w = srcRect.w;
-	dstRect.h = srcRect.h;
+	out.Clip(&srcRect, &screenPosition);
+	SDL_Rect dstRect { screenPosition.x + out.region.x, screenPosition.y + out.region.y, 0, 0 };
 
-	if (art->surface->format->BitsPerPixel == 8 && art->palette_version != pal_surface_palette_version) {
-		if (SDLC_SetSurfaceColors(art->surface.get(), out.surface->format->palette) <= -1)
-			ErrSdl();
-		art->palette_version = pal_surface_palette_version;
-	}
+	UpdatePalette(art, out.surface);
 
 	if (SDL_BlitSurface(art->surface.get(), &srcRect, out.surface, &dstRect) < 0)
 		ErrSdl();
 }
 
-void DrawAnimatedArt(Art *art, int screenX, int screenY)
+void DrawAnimatedArt(Art *art, Point screenPosition)
 {
-	DrawArt(screenX, screenY, art, GetAnimationFrame(art->frames));
+	DrawArt(screenPosition, art, GetAnimationFrame(art->frames));
 }
 
 int GetAnimationFrame(int frames, int fps)

@@ -1,18 +1,19 @@
-#include "storm/storm.h"
-
 #include <SDL.h>
 #include <SDL_endian.h>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <string>
-
-#include "Radon.hpp"
 
 #include "DiabloUI/diabloui.h"
 #include "options.h"
-#include "utils/paths.h"
-#include "utils/stubs.h"
+#include "storm/storm.h"
+#include "utils/file_util.h"
 #include "utils/log.hpp"
+#include "utils/paths.h"
+#include "utils/sdl_mutex.h"
+#include "utils/stubs.h"
+#include "utils/stdcompat/optional.hpp"
 
 // Include Windows headers for Get/SetLastError.
 #if defined(_WIN32)
@@ -30,14 +31,22 @@ namespace devilution {
 namespace {
 
 bool directFileAccess = false;
-std::string *SBasePath = nullptr;
+std::optional<std::string> SBasePath;
+
+SdlMutex Mutex;
 
 } // namespace
 
-radon::File &getIni()
+bool SFileReadFileThreadSafe(HANDLE hFile, void *buffer, size_t nNumberOfBytesToRead, size_t *read, int *lpDistanceToMoveHigh)
 {
-	static radon::File ini(paths::ConfigPath() + "diablo.ini");
-	return ini;
+	const std::lock_guard<SdlMutex> lock(Mutex);
+	return SFileReadFile(hFile, buffer, nNumberOfBytesToRead, read, lpDistanceToMoveHigh);
+}
+
+bool SFileCloseFileThreadSafe(HANDLE hFile)
+{
+	const std::lock_guard<SdlMutex> lock(Mutex);
+	return SFileCloseFile(hFile);
 }
 
 // Converts ASCII characters to lowercase
@@ -73,7 +82,7 @@ bool SFileOpenFile(const char *filename, HANDLE *phFile)
 {
 	bool result = false;
 
-	if (directFileAccess && SBasePath != nullptr) {
+	if (directFileAccess && SBasePath) {
 		std::string path = *SBasePath + filename;
 		for (std::size_t i = SBasePath->size(); i < path.size(); ++i)
 			path[i] = AsciiToLowerTable_Path[static_cast<unsigned char>(path[i])];
@@ -120,245 +129,29 @@ bool SFileOpenFile(const char *filename, HANDLE *phFile)
 	}
 
 	if (!result || (*phFile == nullptr)) {
-		Log("{}: Not found: {}", __FUNCTION__, filename);
+		const auto error = SErrGetLastError();
+		if (error == STORM_ERROR_FILE_NOT_FOUND) {
+			LogVerbose("{}(\"{}\") File not found", __FUNCTION__, filename);
+		} else {
+			LogError("{}(\"{}\") Failed with error code {}", __FUNCTION__, filename, error);
+		}
 	}
 	return result;
 }
 
-bool SBmpLoadImage(const char *pszFileName, SDL_Color *pPalette, BYTE *pBuffer, DWORD dwBuffersize, DWORD *pdwWidth, DWORD *dwHeight, DWORD *pdwBpp)
-{
-	HANDLE hFile;
-	size_t size;
-	PCXHeader pcxhdr;
-	BYTE paldata[256][3];
-	BYTE *dataPtr, *fileBuffer;
-	BYTE byte;
-
-	if (pdwWidth != nullptr)
-		*pdwWidth = 0;
-	if (dwHeight != nullptr)
-		*dwHeight = 0;
-	if (pdwBpp != nullptr)
-		*pdwBpp = 0;
-
-	if (!pszFileName || !*pszFileName) {
-		return false;
-	}
-
-	if (pBuffer && !dwBuffersize) {
-		return false;
-	}
-
-	if (!pPalette && !pBuffer && !pdwWidth && !dwHeight) {
-		return false;
-	}
-
-	if (!SFileOpenFile(pszFileName, &hFile)) {
-		return false;
-	}
-
-	while (strchr(pszFileName, 92) != nullptr)
-		pszFileName = strchr(pszFileName, 92) + 1;
-
-	while (strchr(pszFileName + 1, 46) != nullptr)
-		pszFileName = strchr(pszFileName, 46);
-
-	// omit all types except PCX
-	if (!pszFileName || strcasecmp(pszFileName, ".pcx") != 0) {
-		return false;
-	}
-
-	if (!SFileReadFile(hFile, &pcxhdr, 128, nullptr, nullptr)) {
-		SFileCloseFile(hFile);
-		return false;
-	}
-
-	int width = SDL_SwapLE16(pcxhdr.Xmax) - SDL_SwapLE16(pcxhdr.Xmin) + 1;
-	int height = SDL_SwapLE16(pcxhdr.Ymax) - SDL_SwapLE16(pcxhdr.Ymin) + 1;
-
-	// If the given buffer is larger than width * height, assume the extra data
-	// is scanline padding.
-	//
-	// This is useful because in SDL the pitch size is often slightly larger
-	// than image width for efficiency.
-	const int xSkip = dwBuffersize / height - width;
-
-	if (pdwWidth != nullptr)
-		*pdwWidth = width;
-	if (dwHeight != nullptr)
-		*dwHeight = height;
-	if (pdwBpp != nullptr)
-		*pdwBpp = pcxhdr.BitsPerPixel;
-
-	if (pBuffer == nullptr) {
-		SFileSetFilePointer(hFile, 0, nullptr, DVL_FILE_END);
-		fileBuffer = nullptr;
-	} else {
-		const auto pos = SFileGetFilePointer(hFile);
-		const auto end = SFileSetFilePointer(hFile, 0, DVL_FILE_END);
-		const auto begin = SFileSetFilePointer(hFile, pos, DVL_FILE_BEGIN);
-		size = end - begin;
-		fileBuffer = (BYTE *)malloc(size);
-	}
-
-	if (fileBuffer != nullptr) {
-		SFileReadFile(hFile, fileBuffer, size, nullptr, nullptr);
-		dataPtr = fileBuffer;
-
-		for (int j = 0; j < height; j++) {
-			for (int x = 0; x < width; dataPtr++) {
-				byte = *dataPtr;
-				if (byte < 0xC0) {
-					*pBuffer = byte;
-					pBuffer++;
-					x++;
-					continue;
-				}
-				dataPtr++;
-
-				for (int i = 0; i < (byte & 0x3F); i++) {
-					*pBuffer = *dataPtr;
-					pBuffer++;
-					x++;
-				}
-			}
-			// Skip the pitch padding.
-			pBuffer += xSkip;
-		}
-
-		free(fileBuffer);
-	}
-
-	if (pPalette && pcxhdr.BitsPerPixel == 8) {
-		const auto pos = SFileSetFilePointer(hFile, -768, DVL_FILE_CURRENT);
-		if (pos == static_cast<std::uint64_t>(-1)) {
-			Log("SFileSetFilePointer error: {}", (unsigned int)SErrGetLastError());
-		}
-		SFileReadFile(hFile, paldata, 768, nullptr, nullptr);
-
-		for (int i = 0; i < 256; i++) {
-			pPalette[i].r = paldata[i][0];
-			pPalette[i].g = paldata[i][1];
-			pPalette[i].b = paldata[i][2];
-#ifndef USE_SDL1
-			pPalette[i].a = SDL_ALPHA_OPAQUE;
-#endif
-		}
-	}
-
-	SFileCloseFile(hFile);
-
-	return true;
-}
-
-bool getIniBool(const char *sectionName, const char *keyName, bool defaultValue)
-{
-	char string[2];
-
-	if (!getIniValue(sectionName, keyName, string, 2))
-		return defaultValue;
-
-	return strtol(string, nullptr, 10) != 0;
-}
-
-float getIniFloat(const char *sectionName, const char *keyName, float defaultValue)
-{
-	radon::Section *section = getIni().getSection(sectionName);
-	if (section == nullptr)
-		return defaultValue;
-
-	radon::Key *key = section->getKey(keyName);
-	if (key == nullptr)
-		return defaultValue;
-
-	return key->getFloatValue();
-}
-
-bool getIniValue(const char *sectionName, const char *keyName, char *string, int stringSize, const char *defaultString)
-{
-	strncpy(string, defaultString, stringSize);
-
-	radon::Section *section = getIni().getSection(sectionName);
-	if (section == nullptr)
-		return false;
-
-	radon::Key *key = section->getKey(keyName);
-	if (key == nullptr)
-		return false;
-
-	std::string value = key->getStringValue();
-
-	if (string != nullptr)
-		strncpy(string, value.c_str(), stringSize);
-
-	return true;
-}
-
-void setIniValue(const char *sectionName, const char *keyName, const char *value, int len)
-{
-	radon::File &ini = getIni();
-
-	radon::Section *section = ini.getSection(sectionName);
-	if (section == nullptr) {
-		ini.addSection(sectionName);
-		section = ini.getSection(sectionName);
-	}
-
-	std::string stringValue(value, len ? len : strlen(value));
-
-	radon::Key *key = section->getKey(keyName);
-	if (key == nullptr) {
-		section->addKey(radon::Key(keyName, stringValue));
-	} else {
-		key->setValue(stringValue);
-	}
-}
-
-void SaveIni()
-{
-	getIni().saveToFile();
-}
-
-int getIniInt(const char *keyname, const char *valuename, int defaultValue)
-{
-	char string[10];
-	if (!getIniValue(keyname, valuename, string, sizeof(string))) {
-		return defaultValue;
-	}
-
-	return strtol(string, nullptr, sizeof(string));
-}
-
-void setIniInt(const char *keyname, const char *valuename, int value)
-{
-	char str[10];
-	sprintf(str, "%d", value);
-	setIniValue(keyname, valuename, str);
-}
-
-void setIniFloat(const char *keyname, const char *valuename, float value)
-{
-	char str[10];
-	sprintf(str, "%.2f", value);
-	setIniValue(keyname, valuename, str);
-}
-
-DWORD SErrGetLastError()
+uint32_t SErrGetLastError()
 {
 	return ::GetLastError();
 }
 
-void SErrSetLastError(DWORD dwErrCode)
+void SErrSetLastError(uint32_t dwErrCode)
 {
 	::SetLastError(dwErrCode);
 }
 
-bool SFileSetBasePath(const char *path)
+void SFileSetBasePath(string_view path)
 {
-	if (SBasePath == nullptr)
-		SBasePath = new std::string;
-	*SBasePath = path;
-	return true;
+	SBasePath.emplace(path);
 }
 
 bool SFileEnableDirectAccess(bool enable)
@@ -366,4 +159,17 @@ bool SFileEnableDirectAccess(bool enable)
 	directFileAccess = enable;
 	return true;
 }
+
+#if defined(_WIN64) || defined(_WIN32)
+bool SFileOpenArchive(const char *szMpqName, DWORD dwPriority, DWORD dwFlags, HANDLE *phMpq)
+{
+	const auto szMpqNameUtf16 = ToWideChar(szMpqName);
+	if (szMpqNameUtf16 == nullptr) {
+		LogError("UTF-8 -> UTF-16 conversion error code {}", ::GetLastError());
+		return false;
+	}
+	return SFileOpenArchive(szMpqNameUtf16.get(), dwPriority, dwFlags, phMpq);
+}
+#endif
+
 } // namespace devilution

@@ -14,7 +14,7 @@
 namespace devilution {
 
 #pragma pack(push, 1)
-struct PkItemStruct {
+struct ItemPack {
 	uint32_t iSeed;
 	uint16_t iCreateInfo;
 	uint16_t idx;
@@ -27,7 +27,7 @@ struct PkItemStruct {
 	int32_t dwBuff;
 };
 
-struct PkPlayerStruct {
+struct PlayerPack {
 	uint32_t dwLowDateTime;
 	uint32_t dwHighDateTime;
 	int8_t destAction;
@@ -46,7 +46,7 @@ struct PkPlayerStruct {
 	uint8_t pBaseVit;
 	int8_t pLevel;
 	uint8_t pStatPts;
-	int32_t pExperience;
+	uint32_t pExperience;
 	int32_t pGold;
 	int32_t pHPBase;
 	int32_t pMaxHPBase;
@@ -54,17 +54,18 @@ struct PkPlayerStruct {
 	int32_t pMaxManaBase;
 	int8_t pSplLvl[37]; // Should be MAX_SPELLS but set to 37 to make save games compatible
 	uint64_t pMemSpells;
-	PkItemStruct InvBody[NUM_INVLOC];
-	PkItemStruct InvList[NUM_INV_GRID_ELEM];
+	ItemPack InvBody[NUM_INVLOC];
+	ItemPack InvList[NUM_INV_GRID_ELEM];
 	int8_t InvGrid[NUM_INV_GRID_ELEM];
 	uint8_t _pNumInv;
-	PkItemStruct SpdList[MAXBELTITEMS];
+	ItemPack SpdList[MAXBELTITEMS];
 	int8_t pTownWarps;
 	int8_t pDungMsgs;
 	int8_t pLvlLoad;
 	uint8_t pBattleNet;
 	uint8_t pManaShield;
 	uint8_t pDungMsgs2;
+	/** The format the charater is in, 0: Diablo, 1: Hellfire */
 	int8_t bIsHellfire;
 	int8_t bReserved; // For future use
 	uint16_t wReflections;
@@ -78,9 +79,18 @@ struct PkPlayerStruct {
 };
 #pragma pack(pop)
 
-void PackPlayer(PkPlayerStruct *pPack, int pnum, bool manashield);
-void UnPackPlayer(PkPlayerStruct *pPack, int pnum, bool netSync);
-void PackItem(PkItemStruct *id, const ItemStruct *is);
-void UnPackItem(const PkItemStruct *is, ItemStruct *id, bool isHellfire);
+void PackPlayer(PlayerPack *pPack, const Player &player, bool manashield);
+void UnPackPlayer(const PlayerPack *pPack, Player &player, bool netSync);
+void PackItem(ItemPack *id, const Item *is);
+
+/**
+ * Expand a ItemPack in to a Item
+ *
+ * Note: last slot of item[MAXITEMS+1] used as temporary buffer
+ * find real name reference below, possibly [sizeof(item[])/sizeof(Item)]
+ * @param is The source packed item
+ * @param id The destination item
+ */
+void UnPackItem(const ItemPack *is, Item *id, bool isHellfire);
 
 } // namespace devilution

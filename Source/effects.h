@@ -6,10 +6,118 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
+#include "engine.h"
 #include "sound.h"
 
 namespace devilution {
+
+enum class HeroSpeech {
+	ChamberOfBoneLore,
+	HorazonsSanctumLore,
+	GolemSpellLore,
+	HorazonsCreatureOfFlameLore,
+	MortaVespaGaieaInnuminoEvegeenJatanLuaGraton,
+	GrimspikeLieutenantOfBelialLore,
+	HorazonsJournal,
+	YourDeathWillBeAvenged,
+	RestInPeaceMyFriend,
+	ValorLore,
+	HallsOfTheBlindLore,
+	WarlordOfBloodLore,
+	ICantUseThisYet,
+	ICantCarryAnymore,
+	IHaveNoRoom,
+	WhereWouldIPutThis,
+	NoWay,
+	NotAChance,
+	IdNeverUseThis,
+	IdHaveToEquipThat,
+	ICantMoveThis,
+	ICantMoveThisYet,
+	ICantOpenThis,
+	ICantOpenThisYet,
+	ICantLiftThis,
+	ICantLiftThisYet,
+	ICantCastThatHere,
+	ICantCastThatYet,
+	ThatDidntDoAnything,
+	ICanAlreadyDoThat,
+	IDontNeedThat,
+	IDontNeedToDoThat,
+	IDontWantThat,
+	IDontHaveASpellReady,
+	NotEnoughMana,
+	ThatWouldKillMe,
+	ICantDoThat,
+	No,
+	Yes,
+	ThatWontWork,
+	ThatWontWorkHere,
+	ThatWontWorkYet,
+	ICantGetThereFromHere,
+	ItsTooHeavy,
+	ItsTooBig,
+	JustWhatIWasLookingFor,
+	IveGotABadFeelingAboutThis,
+	GotMilk,
+	ImNotThirsty,
+	ImNoMilkmaid,
+	ICouldBlowUpTheWholeVillage,
+	YepThatsACowAlright,
+	TooUghHeavy,
+	InSpirituSanctum,
+	PraedictumOtium,
+	EfficioObitusUtInimicus,
+	TheEnchantmentIsGone,
+	OhTooEasy,
+	BackToTheGrave,
+	TimeToDie,
+	ImNotImpressed,
+	ImSorryDidIBreakYourConcentration,
+	VengeanceIsMine,
+	Die,
+	Yeah,
+	Ah,
+	Phew,
+	Argh,
+	ArghClang,
+	Aaaaargh,
+	OofAh,
+	HeavyBreathing,
+	Oh,
+	Wow,
+	ThankTheLight,
+	WhatWasThat,
+	MmHmm,
+	Hmm,
+	UhHuh,
+	TheSpiritsOfTheDeadAreNowAvenged,
+	TheTownIsSafeFromTheseFoulSpawn,
+	RestWellLeoricIllFindYourSon,
+	YourMadnessEndsHereBetrayer,
+	YoullLureNoMoreMenToTheirDeaths,
+	ReturnToHeavenWarriorOfLight,
+	ICanSeeWhyTheyFearThisWeapon,
+	ThisMustBeWhatGriswoldWanted,
+	INeedToGetThisToLachdanan,
+	INeedToGetThisToGriswold,
+	IveNeverBeenHereBefore,
+	MayTheSpiritOfArkaineProtectMe,
+	ThisIsAPlaceOfGreatPower,
+	ThisBladeMustBeDestroyed,
+	YourReignOfPainHasEnded,
+	NowThatsOneBigMushroom,
+	TheSmellOfDeathSurroundsMe,
+	TheSanctityOfThisPlaceHasBeenFouled,
+	ItsHotDownHere,
+	IMustBeGettingClose,
+	MaybeItsLockedFromTheInside,
+	LooksLikeItsRustedShut,
+	MaybeTheresAnotherWay,
+	LAST = MaybeTheresAnotherWay
+};
 
 enum _sfx_id : int16_t {
 	PS_WALK1,
@@ -1059,7 +1167,7 @@ enum sfx_flag : uint8_t {
 struct TSFX {
 	uint8_t bFlags;
 	const char *pszName;
-	TSnd *pSnd;
+	std::unique_ptr<TSnd> pSnd;
 };
 
 extern int sfxdelay;
@@ -1069,16 +1177,15 @@ bool effect_is_playing(int nSFX);
 void stream_stop();
 void InitMonsterSND(int monst);
 void FreeMonsterSnd();
-bool calc_snd_position(int x, int y, int *plVolume, int *plPan);
-void PlayEffect(int i, int mode);
+bool CalculateSoundPosition(Point soundPosition, int *plVolume, int *plPan);
 void PlaySFX(_sfx_id psfx);
-void PlaySfxLoc(_sfx_id psfx, int x, int y, bool randomizeByCategory = true);
+void PlaySfxLoc(_sfx_id psfx, Point position, bool randomizeByCategory = true);
 void sound_stop();
 void sound_update();
 void effects_cleanup_sfx();
 void sound_init();
 void ui_sound_init();
-void effects_play_sound(const char *snd_file);
+void effects_play_sound(const char *sndFile);
 int GetSFXLength(int nSFX);
 
 } // namespace devilution

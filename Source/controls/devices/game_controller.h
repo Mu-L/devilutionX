@@ -11,12 +11,12 @@
 namespace devilution {
 
 class GameController {
-	static std::vector<GameController> *const controllers_;
+	static std::vector<GameController> controllers_;
 
 public:
-	static void Add(int joystick_index);
-	static void Remove(SDL_JoystickID instance_id);
-	static GameController *Get(SDL_JoystickID instance_id);
+	static void Add(int joystickIndex);
+	static void Remove(SDL_JoystickID instanceId);
+	static GameController *Get(SDL_JoystickID instanceId);
 	static GameController *Get(const SDL_Event &event);
 	static const std::vector<GameController> &All();
 	static bool IsPressedOnAnyController(ControllerButton button);

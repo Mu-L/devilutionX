@@ -5,9 +5,11 @@
 #include "control.h"
 #include "controls/menu_controls.h"
 #include "dx.h"
+#include "hwcursor.hpp"
 #include "palette.h"
 #include "utils/display.h"
 #include "utils/language.h"
+#include "utils/ttf_wrap.h"
 
 namespace devilution {
 namespace {
@@ -16,9 +18,9 @@ Art progressArt;
 Art ArtPopupSm;
 Art ArtProgBG;
 Art ProgFil;
-SDL_Surface *msgSurface;
-SDL_Surface *msgShadow;
-std::vector<UiItemBase *> vecProgress;
+SDLSurfaceUniquePtr msgSurface;
+SDLSurfaceUniquePtr msgShadow;
+std::vector<std::unique_ptr<UiItemBase>> vecProgress;
 bool endMenu;
 
 void DialogActionCancel()
@@ -39,11 +41,11 @@ void ProgressLoad(const char *msg)
 		SDL_Color color = { 243, 243, 243, 0 };
 		SDL_Color black = { 0, 0, 0, 0 };
 
-		msgSurface = TTF_RenderUTF8_Solid(font, msg, color);
-		msgShadow = TTF_RenderUTF8_Solid(font, msg, black);
+		msgSurface = TTFWrap::RenderText_Solid(font, msg, color);
+		msgShadow = TTFWrap::RenderText_Solid(font, msg, black);
 	}
 	SDL_Rect rect3 = { (Sint16)(PANEL_LEFT + 265), (Sint16)(UI_OFFSET_Y + 267), SML_BUTTON_WIDTH, SML_BUTTON_HEIGHT };
-	vecProgress.push_back(new UiButton(&SmlButton, _("Cancel"), &DialogActionCancel, rect3, 0));
+	vecProgress.push_back(std::make_unique<UiButton>(&SmlButton, _("Cancel"), &DialogActionCancel, rect3));
 }
 
 void ProgressFree()
@@ -53,9 +55,7 @@ void ProgressFree()
 	ArtProgBG.Unload();
 	ProgFil.Unload();
 	UnloadSmlButtonArt();
-	SDL_FreeSurface(msgSurface);
 	msgSurface = nullptr;
-	SDL_FreeSurface(msgShadow);
 	msgShadow = nullptr;
 	UnloadTtfFont();
 }
@@ -63,29 +63,28 @@ void ProgressFree()
 void ProgressRender(BYTE progress)
 {
 	SDL_FillRect(DiabloUiSurface(), nullptr, 0x000000);
-	DrawArt(0, 0, &ArtBackground);
+	DrawArt({ 0, 0 }, &ArtBackground);
 
-	Sint16 x = GetCenterOffset(280);
-	Sint16 y = GetCenterOffset(144, gnScreenHeight);
+	Point position = { GetCenterOffset(280), GetCenterOffset(144, gnScreenHeight) };
 
-	DrawArt(x, y, &ArtPopupSm, 0, 280, 140);
-	DrawArt(GetCenterOffset(227), y + 52, &ArtProgBG, 0, 227);
+	DrawArt(position, &ArtPopupSm, 0, 280, 140);
+	DrawArt({ GetCenterOffset(227), position.y + 52 }, &ArtProgBG, 0, 227);
 	if (progress != 0) {
-		DrawArt(GetCenterOffset(227), y + 52, &ProgFil, 0, 227 * progress / 100);
+		DrawArt({ GetCenterOffset(227), position.y + 52 }, &ProgFil, 0, 227 * progress / 100);
 	}
-	DrawArt(GetCenterOffset(110), y + 99, &SmlButton, 2, 110);
+	DrawArt({ GetCenterOffset(110), position.y + 99 }, &SmlButton, 2, 110);
 
 	if (msgSurface != nullptr) {
 		SDL_Rect dscRect = {
-			static_cast<Sint16>(x + 50 + 1),
-			static_cast<Sint16>(y + 8 + 1),
+			static_cast<Sint16>(position.x + 50 + 1),
+			static_cast<Sint16>(position.y + 8 + 1),
 			static_cast<Uint16>(msgSurface->w),
 			static_cast<Uint16>(msgSurface->h)
 		};
-		Blit(msgShadow, nullptr, &dscRect);
+		Blit(msgShadow.get(), nullptr, &dscRect);
 		dscRect.x -= 1;
 		dscRect.y -= 1;
-		Blit(msgSurface, nullptr, &dscRect);
+		Blit(msgSurface.get(), nullptr, &dscRect);
 	}
 }
 

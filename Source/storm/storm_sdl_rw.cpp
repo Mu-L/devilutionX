@@ -22,7 +22,7 @@ static void SFileRwSetHandle(struct SDL_RWops *context, HANDLE handle)
 #ifndef USE_SDL1
 static Sint64 SFileRwSize(struct SDL_RWops *context)
 {
-	return SFileGetFileSize(SFileRwGetHandle(context), nullptr);
+	return SFileGetFileSize(SFileRwGetHandle(context));
 }
 #endif
 
@@ -48,7 +48,7 @@ static int SFileRwSeek(struct SDL_RWops *context, int offset, int whence)
 	}
 	const std::uint64_t pos = SFileSetFilePointer(SFileRwGetHandle(context), offset, swhence);
 	if (pos == static_cast<std::uint64_t>(-1)) {
-		Log("SFileRwSeek error: {}", (unsigned int)SErrGetLastError());
+		Log("SFileRwSeek error: {}", SErrGetLastError());
 	}
 	return pos;
 }
@@ -59,11 +59,11 @@ static size_t SFileRwRead(struct SDL_RWops *context, void *ptr, size_t size, siz
 static int SFileRwRead(struct SDL_RWops *context, void *ptr, int size, int maxnum)
 #endif
 {
-	DWORD numRead = 0;
-	if (!SFileReadFile(SFileRwGetHandle(context), ptr, maxnum * size, &numRead, nullptr)) {
-		const DWORD errCode = SErrGetLastError();
+	size_t numRead = 0;
+	if (!SFileReadFileThreadSafe(SFileRwGetHandle(context), ptr, maxnum * size, &numRead)) {
+		const auto errCode = SErrGetLastError();
 		if (errCode != STORM_ERROR_HANDLE_EOF) {
-			Log("SFileRwRead error: {} {} ERROR CODE {}", (unsigned int)size, (unsigned int)maxnum, (unsigned int)errCode);
+			Log("SFileRwRead error: {} {} ERROR CODE {}", size, maxnum, errCode);
 		}
 	}
 	return numRead / size;
@@ -71,13 +71,14 @@ static int SFileRwRead(struct SDL_RWops *context, void *ptr, int size, int maxnu
 
 static int SFileRwClose(struct SDL_RWops *context)
 {
-	mem_free_dbg(context);
+	SFileCloseFileThreadSafe(SFileRwGetHandle(context));
+	delete context;
 	return 0;
 }
 
 SDL_RWops *SFileRw_FromStormHandle(HANDLE handle)
 {
-	SDL_RWops *result = (SDL_RWops *)DiabloAllocPtr(sizeof(SDL_RWops));
+	auto *result = new SDL_RWops();
 	std::memset(result, 0, sizeof(*result));
 
 #ifndef USE_SDL1
@@ -93,6 +94,26 @@ SDL_RWops *SFileRw_FromStormHandle(HANDLE handle)
 	result->close = &SFileRwClose;
 	SFileRwSetHandle(result, handle);
 	return result;
+}
+
+SDL_RWops *SFileOpenRw(const char *filename)
+{
+#ifdef __ANDROID__
+	std::string relativePath = filename;
+	for (std::size_t i = 0; i < relativePath.size(); ++i) {
+		if (relativePath[i] == '\\')
+			relativePath[i] = '/';
+	}
+	SDL_RWops *rwops = SDL_RWFromFile(relativePath.c_str(), "rb");
+	if (rwops != nullptr)
+		return rwops;
+#endif
+
+	HANDLE handle;
+	if (SFileOpenFile(filename, &handle))
+		return SFileRw_FromStormHandle(handle);
+
+	return nullptr;
 }
 
 } // namespace devilution

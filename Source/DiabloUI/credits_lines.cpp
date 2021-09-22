@@ -3,7 +3,7 @@
 
 namespace devilution {
 
-const char *const CREDITS_LINES[] = {
+const char *const CreditLines[] = {
 	N_("Game Design"),
 	"	Blizzard North",
 	"",
@@ -70,7 +70,7 @@ const char *const CREDITS_LINES[] = {
 	N_("Associate Producer"),
 	"	James Phinney",
 	"",
-	N_("Diablo Strike Team"),
+	N_(/* TRANSLATORS: Keep Strike Team as Name */ "Diablo Strike Team"),
 	"	Allen Adham, Ron Millar, Mike O'Brien,",
 	"	James Phinney, Bill Roper, Patrick Wyatt",
 	"",
@@ -127,7 +127,7 @@ const char *const CREDITS_LINES[] = {
 	N_("QA Counterintelligence"),
 	"	Alan Dabiri, Jesse McReynolds, Walter Takata",
 	"",
-	N_("Order of Network Information Services"),
+	N_(/* TRANSLATORS: A group of people */ "Order of Network Information Services"),
 	"	Robert Bridenbecker, Jason \"Brother Shaggy\" Schmit,",
 	"	Jamie \"Brother Gug\" Steigerwald, Richard Seis ",
 	"",
@@ -170,7 +170,7 @@ const char *const CREDITS_LINES[] = {
 	"",
 	N_("Thanks To"),
 	"	Ian Colquhoun, Rod Shean, Brian Fitzgerald, Sharon Schafer, Todd ",
-	N_("	Schafer, Richard and Sandra Schaefer, Rick Bowles, Greg Bogden, "),
+	"	Schafer, Richard and Sandra Schaefer, Rick Bowles, Greg Bogden, ",
 	"	Cindy Sievert, Brad Mason, Chuck Goldman, Karin Colenzo, Wendy ",
 	"	Brevik, Jennie Brevik, Hanna Carroll, Katie Newell, Karen Weiss, ",
 	"	Kurt Beaver, Stan McDonald, Brian Sexton, Michael Wan, Megan ",
@@ -187,7 +187,7 @@ const char *const CREDITS_LINES[] = {
 	"	Jackie Chan,Proposition 215, Rumiko Takahashi, Bunchy & Mason, ",
 	"	The Friends of Stan, The Zoo Crew, Team Hamro, Brazil 2001, RUSH, ",
 	"	Cornholio, THE BROS., Dar, Emeril Lagasse, Tom Waits, Ice-Cube, ",
-	N_("	The Strike Team Deflectors, Tony Levin, Big Jim and the Twins, "),
+	"	The Strike Team Deflectors, Tony Levin, Big Jim and the Twins, ",
 	"	Jag`rmeister, The Megasphere, Condor, The Allower, The Sunday ",
 	"	Night Group, Gravitar, Steinway Pianos, Round Table Pizza, The Poxy ",
 	"	Boggards, Urban Mystic & Co., Caffeine, Hunter Rose, Marly ",
@@ -195,7 +195,7 @@ const char *const CREDITS_LINES[] = {
 	"	Man, Krissann for color, Patty at Avalon Tattoo, James, Whaleboy, ",
 	"	Dunsel Training Institute, monkeys, Dob Bole, Rootes Group, Porshe, ",
 	"	Bongo, Scarlett, Apollo, The House of Mediocrity, Amelias, The King, ",
-	N_("	Saag and all the folks at Davidson"),
+	"	Saag and all the folks at Davidson",
 	"",
 	N_("In memory of"),
 	"	Lawrence and Barbara Williams",
@@ -552,6 +552,6 @@ const char *const CREDITS_LINES[] = {
 	" "
 };
 
-const std::size_t CREDITS_LINES_SIZE = sizeof(CREDITS_LINES) / sizeof(CREDITS_LINES[0]);
+const std::size_t CreditLinesSize = sizeof(CreditLines) / sizeof(CreditLines[0]);
 
 } // namespace devilution

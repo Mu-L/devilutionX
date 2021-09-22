@@ -6,18 +6,28 @@
 
 #include <cstdint>
 
-#include "control.h"
 #include "DiabloUI/art_draw.h"
+#include "control.h"
 #include "dx.h"
+#include "engine.h"
+#include "engine/cel_sprite.hpp"
+#include "engine/load_cel.hpp"
+#include "engine/render/cel_render.hpp"
+#include "hwcursor.hpp"
 #include "init.h"
 #include "loadsave.h"
 #include "palette.h"
 #include "pfile.h"
 #include "plrmsg.h"
+#include "utils/sdl_geometry.h"
+#include "utils/stdcompat/optional.hpp"
 
 namespace devilution {
 
-BYTE *sgpBackCel;
+namespace {
+
+std::optional<CelSprite> sgpBackCel;
+
 uint32_t sgdwProgress;
 int progress_id;
 
@@ -28,13 +38,13 @@ const int BarPos[3][2] = { { 53, 37 }, { 53, 421 }, { 53, 37 } };
 
 Art ArtCutsceneWidescreen;
 
-static void FreeInterface()
+void FreeInterface()
 {
-	MemFreeDbg(sgpBackCel);
+	sgpBackCel = std::nullopt;
 	ArtCutsceneWidescreen.Unload();
 }
 
-static Cutscenes PickCutscene(interface_mode uMsg)
+Cutscenes PickCutscene(interface_mode uMsg)
 {
 	switch (uMsg) {
 	case WM_DIABLOADGAME:
@@ -46,11 +56,8 @@ static Cutscenes PickCutscene(interface_mode uMsg)
 	case WM_DIABPREVLVL:
 	case WM_DIABTOWNWARP:
 	case WM_DIABTWARPUP: {
-		int lvl = currlevel;
-		if (uMsg == WM_DIABTWARPUP)
-			lvl = plr[myplr].plrlevel;
-
-		if (lvl == 1 && uMsg == WM_DIABPREVLVL)
+		int lvl = Players[MyPlayerId].plrlevel;
+		if (lvl == 1 && uMsg == WM_DIABNEXTLVL)
 			return CutTown;
 		if (lvl == 16 && uMsg == WM_DIABNEXTLVL)
 			return CutGate;
@@ -73,7 +80,7 @@ static Cutscenes PickCutscene(interface_mode uMsg)
 		default:
 			return CutLevel1;
 		}
-	};
+	}
 	case WM_DIABWARPLVL:
 		return CutPortal;
 	case WM_DIABSETLVL:
@@ -88,13 +95,14 @@ static Cutscenes PickCutscene(interface_mode uMsg)
 	}
 }
 
-static void InitCutscene(interface_mode uMsg)
+void InitCutscene(interface_mode uMsg)
 {
 	const char *celPath;
 	const char *palPath;
 
 	switch (PickCutscene(uMsg)) {
 	case CutStart:
+		LoadArt("Gendata\\cutstartw.pcx", &ArtCutsceneWidescreen);
 		celPath = "Gendata\\Cutstart.cel";
 		palPath = "Gendata\\Cutstart.pal";
 		progress_id = 1;
@@ -154,48 +162,43 @@ static void InitCutscene(interface_mode uMsg)
 	}
 
 	assert(!sgpBackCel);
-	sgpBackCel = LoadFileInMem(celPath, nullptr);
+	sgpBackCel = LoadCel(celPath, 640);
 	LoadPalette(palPath);
 
 	sgdwProgress = 0;
 }
 
-static void DrawProgress(const CelOutputBuffer &out, int x, int y, int progress_id)
-{
-	BYTE *dst = out.at(x, y);
-	for (int i = 0; i < 22; ++i, dst += out.pitch()) {
-		*dst = BarColor[progress_id];
-	}
-}
-
-static void DrawCutscene()
+void DrawCutscene()
 {
 	lock_buf(1);
-	const CelOutputBuffer &out = GlobalBackBuffer();
-	DrawArt(out, PANEL_X - (ArtCutsceneWidescreen.w() - PANEL_WIDTH) / 2, UI_OFFSET_Y, &ArtCutsceneWidescreen);
-	CelDrawTo(out, PANEL_X, 480 - 1 + UI_OFFSET_Y, sgpBackCel, 1, 640);
+	const Surface &out = GlobalBackBuffer();
+	DrawArt(out, { PANEL_X - (ArtCutsceneWidescreen.w() - PANEL_WIDTH) / 2, UI_OFFSET_Y }, &ArtCutsceneWidescreen);
+	CelDrawTo(out, { PANEL_X, 480 - 1 + UI_OFFSET_Y }, *sgpBackCel, 1);
 
-	for (unsigned i = 0; i < sgdwProgress; i++) {
-		DrawProgress(
-		    out,
-		    BarPos[progress_id][0] + i + PANEL_X,
-		    BarPos[progress_id][1] + UI_OFFSET_Y,
-		    progress_id);
-	}
+	constexpr int ProgressHeight = 22;
+	SDL_Rect rect = MakeSdlRect(
+	    out.region.x + BarPos[progress_id][0] + PANEL_X,
+	    out.region.y + BarPos[progress_id][1] + UI_OFFSET_Y,
+	    sgdwProgress,
+	    ProgressHeight);
+	SDL_FillRect(out.surface, &rect, BarColor[progress_id]);
 
 	unlock_buf(1);
-	force_redraw = 255;
-	scrollrt_draw_game_screen(false);
+
+	BltFast(&rect, &rect);
+	RenderPresent();
 }
+
+} // namespace
 
 void interface_msg_pump()
 {
-	MSG Msg;
+	tagMSG msg;
 
-	while (FetchMessage(&Msg)) {
-		if (Msg.message != DVL_WM_QUIT) {
-			TranslateMessage(&Msg);
-			PushMessage(&Msg);
+	while (FetchMessage(&msg)) {
+		if (msg.message != DVL_WM_QUIT) {
+			TranslateMessage(&msg);
+			PushMessage(&msg);
 		}
 	}
 }
@@ -206,7 +209,7 @@ bool IncProgress()
 	sgdwProgress += 23;
 	if (sgdwProgress > 534)
 		sgdwProgress = 534;
-	if (sgpBackCel != nullptr)
+	if (sgpBackCel)
 		DrawCutscene();
 	return sgdwProgress >= 534;
 }
@@ -223,14 +226,20 @@ void ShowProgress(interface_mode uMsg)
 
 	interface_msg_pump();
 	ClearScreenBuffer();
-	scrollrt_draw_game_screen(true);
+	scrollrt_draw_game_screen();
 	InitCutscene(uMsg);
 	BlackPalette();
 	DrawCutscene();
+
+	if (IsHardwareCursor())
+		SetHardwareCursorVisible(false);
+
 	PaletteFadeIn(8);
 	IncProgress();
 	sound_init();
 	IncProgress();
+
+	auto &myPlayer = Players[MyPlayerId];
 
 	switch (uMsg) {
 	case WM_DIABLOADGAME:
@@ -241,7 +250,7 @@ void ShowProgress(interface_mode uMsg)
 		IncProgress();
 		break;
 	case WM_DIABNEWGAME:
-		plr[myplr].pOriginalCathedral = !gbIsHellfire;
+		myPlayer.pOriginalCathedral = !gbIsHellfire;
 		IncProgress();
 		FreeGameMem();
 		IncProgress();
@@ -259,9 +268,9 @@ void ShowProgress(interface_mode uMsg)
 		}
 		IncProgress();
 		FreeGameMem();
-		currlevel++;
+		setlevel = false;
+		currlevel = myPlayer.plrlevel;
 		leveltype = gnLevelTypeTbl[currlevel];
-		assert(plr[myplr].plrlevel == currlevel);
 		IncProgress();
 		LoadGameLevel(false, ENTRY_MAIN);
 		IncProgress();
@@ -277,7 +286,7 @@ void ShowProgress(interface_mode uMsg)
 		FreeGameMem();
 		currlevel--;
 		leveltype = gnLevelTypeTbl[currlevel];
-		assert(plr[myplr].plrlevel == currlevel);
+		assert(myPlayer.plrlevel == currlevel);
 		IncProgress();
 		LoadGameLevel(false, ENTRY_PREV);
 		IncProgress();
@@ -336,9 +345,9 @@ void ShowProgress(interface_mode uMsg)
 		}
 		IncProgress();
 		FreeGameMem();
-		currlevel = plr[myplr].plrlevel;
+		setlevel = false;
+		currlevel = myPlayer.plrlevel;
 		leveltype = gnLevelTypeTbl[currlevel];
-		assert(plr[myplr].plrlevel == currlevel);
 		IncProgress();
 		LoadGameLevel(false, ENTRY_TWARPDN);
 		IncProgress();
@@ -352,9 +361,8 @@ void ShowProgress(interface_mode uMsg)
 		}
 		IncProgress();
 		FreeGameMem();
-		currlevel = plr[myplr].plrlevel;
+		currlevel = myPlayer.plrlevel;
 		leveltype = gnLevelTypeTbl[currlevel];
-		assert(plr[myplr].plrlevel == currlevel);
 		IncProgress();
 		LoadGameLevel(false, ENTRY_TWARPUP);
 		IncProgress();
@@ -368,9 +376,8 @@ void ShowProgress(interface_mode uMsg)
 		}
 		IncProgress();
 		FreeGameMem();
-		currlevel = plr[myplr].plrlevel;
+		currlevel = myPlayer.plrlevel;
 		leveltype = gnLevelTypeTbl[currlevel];
-		assert(plr[myplr].plrlevel == currlevel);
 		IncProgress();
 		LoadGameLevel(false, ENTRY_MAIN);
 		IncProgress();
@@ -385,11 +392,10 @@ void ShowProgress(interface_mode uMsg)
 	saveProc = SetWindowProc(saveProc);
 	assert(saveProc == DisableInputWndProc);
 
-	NetSendCmdLocParam1(true, CMD_PLAYER_JOINLEVEL, plr[myplr].position.tile.x, plr[myplr].position.tile.y, plr[myplr].plrlevel);
+	NetSendCmdLocParam1(true, CMD_PLAYER_JOINLEVEL, myPlayer.position.tile, myPlayer.plrlevel);
 	plrmsg_delay(false);
-	ResetPal();
 
-	if (gbSomebodyWonGameKludge && plr[myplr].plrlevel == 16) {
+	if (gbSomebodyWonGameKludge && myPlayer.plrlevel == 16) {
 		PrepDoEnding();
 	}
 

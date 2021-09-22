@@ -3,38 +3,63 @@
 #include <memory>
 
 #include <SDL_mutex.h>
+#include <SDL_version.h>
+
+#include "appfat.h"
 
 namespace devilution {
 
-/**
- * @brief Deletes the SDL mutex using `SDL_DestroyMutex`.
+/*
+ * RAII wrapper for SDL_mutex. Satisfies std's "Lockable" (SDL 2) or "BasicLockable" (SDL 1)
+ * requirements so it can be used with std::lock_guard and friends.
  */
-struct SDLMutexDeleter {
-	void operator()(SDL_mutex *mutex) const
-	{
-		SDL_DestroyMutex(mutex);
-	}
-};
-
-using SDLMutexUniquePtr = std::unique_ptr<SDL_mutex, SDLMutexDeleter>;
-
-struct SDLMutexLockGuard {
+class SdlMutex final {
 public:
-	explicit SDLMutexLockGuard(SDL_mutex *mutex)
-	    : mutex_(mutex)
+	SdlMutex()
+	    : mutex_(SDL_CreateMutex())
 	{
-		SDL_LockMutex(mutex_);
+		if (mutex_ == nullptr)
+			ErrSdl();
 	}
 
-	~SDLMutexLockGuard()
+	~SdlMutex()
 	{
-		SDL_UnlockMutex(mutex_);
+		SDL_DestroyMutex(mutex_);
 	}
 
-	SDLMutexLockGuard(const SDLMutexLockGuard &) = delete;
-	SDLMutexLockGuard(SDLMutexLockGuard &&) = delete;
-	SDLMutexLockGuard &operator=(const SDLMutexLockGuard &) = delete;
-	SDLMutexLockGuard &operator=(SDLMutexLockGuard &&) = delete;
+	SdlMutex(const SdlMutex &) = delete;
+	SdlMutex(SdlMutex &&) = delete;
+	SdlMutex &operator=(const SdlMutex &) = delete;
+	SdlMutex &operator=(SdlMutex &&) = delete;
+
+	void lock() noexcept // NOLINT(readability-identifier-naming)
+	{
+		int err = SDL_LockMutex(mutex_);
+		if (err == -1)
+			ErrSdl();
+	}
+
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	bool try_lock() noexcept // NOLINT(readability-identifier-naming)
+	{
+		int err = SDL_TryLockMutex(mutex_);
+		if (err == -1)
+			ErrSdl();
+		return err == 0;
+	}
+#endif
+
+	void unlock() noexcept // NOLINT(readability-identifier-naming)
+	{
+		int err = SDL_UnlockMutex(mutex_);
+		if (err == -1)
+			ErrSdl();
+	}
+
+	SDL_mutex *get()
+	{
+		return mutex_;
+	}
 
 private:
 	SDL_mutex *mutex_;

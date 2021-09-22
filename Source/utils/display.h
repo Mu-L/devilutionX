@@ -18,10 +18,12 @@ namespace devilution {
 extern int refreshDelay; // Screen refresh rate in nanoseconds
 extern SDL_Window *window;
 extern SDL_Renderer *renderer;
-extern SDL_Texture *texture;
+#ifndef USE_SDL1
+extern SDLTextureUniquePtr texture;
+#endif
 
-extern SDL_Palette *palette;
-extern SDL_Surface *pal_surface;
+extern SDLPaletteUniquePtr Palette;
+extern SDL_Surface *PalSurface;
 extern unsigned int pal_surface_palette_version;
 
 #ifdef USE_SDL1
@@ -58,8 +60,8 @@ void OutputToLogical(T *x, T *y)
 		return;
 	float scaleX;
 	SDL_RenderGetScale(renderer, &scaleX, NULL);
-	*x /= scaleX;
-	*y /= scaleX;
+	*x = static_cast<T>(*x / scaleX);
+	*y = static_cast<T>(*y / scaleX);
 
 	SDL_Rect view;
 	SDL_RenderGetViewport(renderer, &view);
@@ -89,8 +91,8 @@ void LogicalToOutput(T *x, T *y)
 
 	float scaleX;
 	SDL_RenderGetScale(renderer, &scaleX, NULL);
-	*x *= scaleX;
-	*y *= scaleX;
+	*x = static_cast<T>(*x * scaleX);
+	*y = static_cast<T>(*y * scaleX);
 #else
 	if (!OutputRequiresScaling())
 		return;

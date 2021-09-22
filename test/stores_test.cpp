@@ -8,7 +8,7 @@ namespace {
 
 TEST(Stores, AddStoreHoldRepair_magic)
 {
-	ItemStruct *item;
+	Item *item;
 
 	item = &storehold[0];
 
@@ -41,7 +41,7 @@ TEST(Stores, AddStoreHoldRepair_magic)
 
 TEST(Stores, AddStoreHoldRepair_normal)
 {
-	ItemStruct *item;
+	Item *item;
 
 	item = &storehold[0];
 
@@ -64,7 +64,7 @@ TEST(Stores, AddStoreHoldRepair_normal)
 
 	item->_iDurability = 19;
 	storenumh = 0;
-	item->_ivalue = 10; // less then 1 per dur
+	item->_ivalue = 10; // less than 1 per dur
 	item->_iIvalue = item->_ivalue;
 	AddStoreHoldRepair(item, 0);
 	EXPECT_EQ(1, storenumh);

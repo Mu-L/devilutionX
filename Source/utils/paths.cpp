@@ -2,8 +2,10 @@
 
 #include <SDL.h>
 
-#include "utils/stdcompat/optional.hpp"
+#include "utils/file_util.h"
 #include "utils/log.hpp"
+#include "utils/stdcompat/optional.hpp"
+#include "utils/sdl_ptrs.h"
 
 #ifdef USE_SDL1
 #include "utils/sdl2_to_1_2_backports.h"
@@ -47,10 +49,9 @@ void AddTrailingSlash(std::string &path)
 
 std::string FromSDL(char *s)
 {
+	SDLUniquePtr<char> pinned(s);
 	std::string result = (s != nullptr ? s : "");
-	if (s != nullptr) {
-		SDL_free(s);
-	} else {
+	if (s == nullptr) {
 		Log("{}", SDL_GetError());
 		SDL_ClearError();
 	}
@@ -62,26 +63,30 @@ std::string FromSDL(char *s)
 const std::string &BasePath()
 {
 	if (!basePath) {
-#ifdef __vita__
-		basePath = PrefPath();
-#else
 		basePath = FromSDL(SDL_GetBasePath());
-#endif
 	}
 	return *basePath;
 }
 
 const std::string &PrefPath()
 {
-	if (!prefPath)
+	if (!prefPath) {
 		prefPath = FromSDL(SDL_GetPrefPath("diasurgical", "devilution"));
+		if (FileExistsAndIsWriteable("diablo.ini")) {
+			prefPath = std::string("./");
+		}
+	}
 	return *prefPath;
 }
 
 const std::string &ConfigPath()
 {
-	if (!configPath)
+	if (!configPath) {
 		configPath = FromSDL(SDL_GetPrefPath("diasurgical", "devilution"));
+		if (FileExistsAndIsWriteable("diablo.ini")) {
+			configPath = std::string("./");
+		}
+	}
 	return *configPath;
 }
 

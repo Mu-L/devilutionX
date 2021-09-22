@@ -9,10 +9,11 @@
 #include "control.h"
 #include "controls/menu_controls.h"
 #include "dx.h"
+#include "hwcursor.hpp"
 #include "palette.h"
 #include "utils/display.h"
-#include "utils/log.hpp"
 #include "utils/language.h"
+#include "utils/log.hpp"
 
 namespace devilution {
 
@@ -28,8 +29,8 @@ void DialogActionOK()
 	dialogEnd = true;
 }
 
-std::vector<UiItemBase *> vecNULL;
-std::vector<UiItemBase *> vecOkDialog;
+std::vector<std::unique_ptr<UiItemBase>> vecNULL;
+std::vector<std::unique_ptr<UiItemBase>> vecOkDialog;
 
 // clang-format off
 #define BLANKCOLOR { 0, 0xFF, 0, 0 }
@@ -162,26 +163,26 @@ void Init(const char *text, const char *caption, bool error, bool renderBehind)
 {
 	if (caption == nullptr) {
 		SDL_Rect rect1 = { (Sint16)(PANEL_LEFT + 180), (Sint16)(UI_OFFSET_Y + 168), 280, 144 };
-		vecOkDialog.push_back(new UiImage(&dialogArt, rect1));
+		vecOkDialog.push_back(std::make_unique<UiImage>(&dialogArt, rect1));
 
 		SDL_Rect rect2 = { (Sint16)(PANEL_LEFT + 200), (Sint16)(UI_OFFSET_Y + 211), 240, 80 };
-		vecOkDialog.push_back(new UiText(text, rect2, UIS_CENTER));
+		vecOkDialog.push_back(std::make_unique<UiText>(text, rect2, UiFlags::AlignCenter));
 
 		SDL_Rect rect3 = { (Sint16)(PANEL_LEFT + 265), (Sint16)(UI_OFFSET_Y + 265), SML_BUTTON_WIDTH, SML_BUTTON_HEIGHT };
-		vecOkDialog.push_back(new UiButton(&SmlButton, _("OK"), &DialogActionOK, rect3, 0));
+		vecOkDialog.push_back(std::make_unique<UiButton>(&SmlButton, _("OK"), &DialogActionOK, rect3));
 	} else {
 		SDL_Rect rect1 = { (Sint16)(PANEL_LEFT + 127), (Sint16)(UI_OFFSET_Y + 100), 385, 280 };
-		vecOkDialog.push_back(new UiImage(&dialogArt, rect1));
+		vecOkDialog.push_back(std::make_unique<UiImage>(&dialogArt, rect1));
 
 		SDL_Color color = { 255, 255, 0, 0 };
 		SDL_Rect rect2 = { (Sint16)(PANEL_LEFT + 147), (Sint16)(UI_OFFSET_Y + 110), 345, 20 };
-		vecOkDialog.push_back(new UiText(text, color, rect2, UIS_CENTER));
+		vecOkDialog.push_back(std::make_unique<UiText>(text, rect2, UiFlags::AlignCenter, color));
 
 		SDL_Rect rect3 = { (Sint16)(PANEL_LEFT + 147), (Sint16)(UI_OFFSET_Y + 141), 345, 190 };
-		vecOkDialog.push_back(new UiText(caption, rect3, UIS_CENTER));
+		vecOkDialog.push_back(std::make_unique<UiText>(caption, rect3, UiFlags::AlignCenter));
 
 		SDL_Rect rect4 = { (Sint16)(PANEL_LEFT + 264), (Sint16)(UI_OFFSET_Y + 335), SML_BUTTON_WIDTH, SML_BUTTON_HEIGHT };
-		vecOkDialog.push_back(new UiButton(&SmlButton, _("OK"), &DialogActionOK, rect4, 0));
+		vecOkDialog.push_back(std::make_unique<UiButton>(&SmlButton, _("OK"), &DialogActionOK, rect4));
 	}
 
 	if (!renderBehind) {
@@ -195,7 +196,7 @@ void Init(const char *text, const char *caption, bool error, bool renderBehind)
 		LoadMaskedArt(error ? "ui_art\\srpopup.pcx" : "ui_art\\spopup.pcx", &dialogArt);
 	} else {
 		if (error) {
-			LoadArt(&dialogArt, popupData, 385, 280);
+			LoadArt(&dialogArt, PopupData, 385, 280);
 		} else {
 			LoadMaskedArt("ui_art\\lpopup.pcx", &dialogArt);
 		}
@@ -214,13 +215,10 @@ void Deinit()
 	if (!fontWasLoaded)
 		UnloadTtfFont();
 
-	for (auto pUIItem : vecOkDialog) {
-		delete pUIItem;
-	}
 	vecOkDialog.clear();
 }
 
-void DialogLoop(const std::vector<UiItemBase *> &items, const std::vector<UiItemBase *> &renderBehind)
+void DialogLoop(const std::vector<std::unique_ptr<UiItemBase>> &items, const std::vector<std::unique_ptr<UiItemBase>> &renderBehind)
 {
 	SDL_Event event;
 	dialogEnd = false;
@@ -258,34 +256,37 @@ void DialogLoop(const std::vector<UiItemBase *> &items, const std::vector<UiItem
 
 } // namespace
 
-void UiOkDialog(const char *text, const char *caption, bool error, const std::vector<UiItemBase *> &renderBehind)
+void UiOkDialog(const char *text, const char *caption, bool error, const std::vector<std::unique_ptr<UiItemBase>> &renderBehind)
 {
 	static bool inDialog = false;
 
 	if (!gbActive || inDialog) {
-		if (SDL_ShowCursor(SDL_ENABLE) <= -1) {
-			Log("{}", SDL_GetError());
+		if (!IsHardwareCursor()) {
+			if (SDL_ShowCursor(SDL_ENABLE) <= -1) {
+				Log("{}", SDL_GetError());
+			}
 		}
-#ifndef RUN_TESTS
-		if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, text, caption, nullptr) <= -1) {
-			Log("{}", SDL_GetError());
-#else
-		{
-#endif
-			Log("{}", text);
-			Log("{}", caption);
+		if (!gbQuietMode) {
+			if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, text, caption, nullptr) <= -1) {
+				Log("{}", SDL_GetError());
+			}
 		}
+		Log("{}", text);
+		Log("{}", caption);
 		return;
 	}
 
 	inDialog = true;
 	Init(text, caption, error, !renderBehind.empty());
-	DialogLoop(vecOkDialog, renderBehind);
+	if (font != nullptr)
+		DialogLoop(vecOkDialog, renderBehind);
+	else
+		UiOkDialog(text, caption, error, renderBehind);
 	Deinit();
 	inDialog = false;
 }
 
-void UiErrorOkDialog(const char *text, const char *caption, const std::vector<UiItemBase *> &renderBehind)
+void UiErrorOkDialog(const char *text, const char *caption, const std::vector<std::unique_ptr<UiItemBase>> &renderBehind)
 {
 	UiOkDialog(text, caption, /*error=*/true, renderBehind);
 }
@@ -295,9 +296,9 @@ void UiErrorOkDialog(const char *text, const char *caption, bool error)
 	UiOkDialog(text, caption, error, vecNULL);
 }
 
-void UiErrorOkDialog(const char *text, std::vector<UiItemBase *> renderBehind)
+void UiErrorOkDialog(const char *text, const std::vector<std::unique_ptr<UiItemBase>> &renderBehind)
 {
-	UiErrorOkDialog(text, nullptr, std::move(renderBehind));
+	UiErrorOkDialog(text, nullptr, renderBehind);
 }
 
 } // namespace devilution

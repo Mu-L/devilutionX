@@ -7,6 +7,8 @@
 
 #include <cstdint>
 
+#include "textdat.h"
+
 namespace devilution {
 
 enum _mai_id : int8_t {
@@ -38,7 +40,7 @@ enum _mai_id : int8_t {
 	AI_COUNSLR,
 	AI_MEGA,
 	AI_DIABLO,
-	AI_LAZURUS,
+	AI_LAZARUS,
 	AI_LAZHELP,
 	AI_LACHDAN,
 	AI_WARLORD,
@@ -53,10 +55,10 @@ enum _mai_id : int8_t {
 	AI_INVALID = -1,
 };
 
-enum _mc_id : uint8_t {
-	MC_UNDEAD,
-	MC_DEMON,
-	MC_ANIMAL,
+enum class MonsterClass : uint8_t {
+	Undead,
+	Demon,
+	Animal,
 };
 
 enum monster_resistance : uint8_t {
@@ -69,6 +71,14 @@ enum monster_resistance : uint8_t {
 	IMMUNE_LIGHTNING = 1 << 5,
 	IMMUNE_NULL_40   = 1 << 6,
 	IMMUNE_ACID      = 1 << 7,
+	// clang-format on
+};
+
+enum monster_treasure : uint16_t {
+	// clang-format off
+	T_MASK    = 0xFFF,
+	T_NODROP = 0x4000, // monster doesn't drop any loot
+	T_UNIQ    = 0x8000, // use combined with unique item's ID - for example butcher's cleaver = T_UNIQ+UITEM_CLEAVE
 	// clang-format on
 };
 
@@ -102,13 +112,14 @@ struct MonsterData {
 	uint8_t mMinDamage2;
 	uint8_t mMaxDamage2;
 	uint8_t mArmorClass;
-	_mc_id mMonstClass;
+	MonsterClass mMonstClass;
 	/** Using monster_resistance as bitflags */
 	uint8_t mMagicRes;
 	/** Using monster_resistance as bitflags */
 	uint8_t mMagicRes2;
-	int8_t mSelFlag;    // TODO Create enum
-	uint16_t mTreasure; // TODO Create enum
+	int8_t mSelFlag; // TODO Create enum
+	/** Using monster_treasure */
+	uint16_t mTreasure;
 	uint16_t mExp;
 };
 
@@ -261,7 +272,25 @@ enum _monster_availability : uint8_t {
 	MAT_RETAIL,
 };
 
-struct UniqMonstStruct {
+/**
+ * @brief Defines if and how a group of monsters should be spawned with the unique monster
+ */
+enum class UniqueMonsterPack {
+	/**
+	 * @brief Don't spawn a group of monsters with the unique monster
+	 */
+	None,
+	/**
+	 * @brief Spawn a group of monsters that are independent from the unique monster
+	 */
+	Independent,
+	/**
+	 * @brief Spawn a group of monsters that are leashed to the unique monster
+	 */
+	Leashed,
+};
+
+struct UniqueMonsterData {
 	_monster_id mtype;
 	const char *mName;
 	const char *mTrnName;
@@ -273,15 +302,19 @@ struct UniqMonstStruct {
 	uint8_t mMaxDamage;
 	/** Using monster_resistance as bitflags */
 	uint16_t mMagicRes;
-	uint16_t mUnqAttr; // TODO create enum
-	uint8_t mUnqVar1;
-	uint8_t mUnqVar2;
-	int mtalkmsg;
+	/**
+	 * @brief Defines if and how a group of monsters should be spawned with the unique monster
+	 */
+
+	UniqueMonsterPack monsterPack;
+	uint8_t customHitpoints;
+	uint8_t customArmorClass;
+	_speech_id mtalkmsg;
 };
 
-extern const MonsterData monsterdata[];
+extern const MonsterData MonstersData[];
 extern const _monster_id MonstConvTbl[];
 extern const char MonstAvailTbl[];
-extern const UniqMonstStruct UniqMonst[];
+extern const UniqueMonsterData UniqueMonstersData[];
 
 } // namespace devilution

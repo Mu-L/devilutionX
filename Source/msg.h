@@ -7,11 +7,12 @@
 
 #include <cstdint>
 
-#include "quests.h"
-#include "objects.h"
-#include "monster.h"
-#include "portal.h"
+#include "engine/point.hpp"
 #include "items.h"
+#include "monster.h"
+#include "objects.h"
+#include "portal.h"
+#include "quests.h"
 
 namespace devilution {
 
@@ -26,7 +27,6 @@ enum _cmd_id : uint8_t {
 	CMD_ADDMAG,
 	CMD_ADDDEX,
 	CMD_ADDVIT,
-	CMD_SBSPELL,
 	CMD_GETITEM,
 	CMD_AGETITEM,
 	CMD_PUTITEM,
@@ -116,12 +116,11 @@ enum _cmd_id : uint8_t {
 	CMD_SYNCPUTITEM,
 	CMD_KILLGOLEM,
 	CMD_SYNCQUEST,
-	CMD_ENDSHIELD,
 	CMD_AWAKEGOLEM,
 	CMD_NOVA,
 	CMD_SETSHIELD,
 	CMD_REMSHIELD,
-	CMD_REFLECT,
+	CMD_SETREFLECT,
 	CMD_NAKRUL,
 	CMD_OPENHIVE,
 	CMD_OPENCRYPT,
@@ -166,6 +165,16 @@ struct TCmdLocParam3 {
 	uint16_t wParam3;
 };
 
+struct TCmdLocParam4 {
+	_cmd_id bCmd;
+	uint8_t x;
+	uint8_t y;
+	uint16_t wParam1;
+	uint16_t wParam2;
+	uint16_t wParam3;
+	uint16_t wParam4;
+};
+
 struct TCmdParam1 {
 	_cmd_id bCmd;
 	uint16_t wParam1;
@@ -184,11 +193,19 @@ struct TCmdParam3 {
 	uint16_t wParam3;
 };
 
+struct TCmdParam4 {
+	_cmd_id bCmd;
+	uint16_t wParam1;
+	uint16_t wParam2;
+	uint16_t wParam3;
+	uint16_t wParam4;
+};
+
 struct TCmdGolem {
 	_cmd_id bCmd;
 	uint8_t _mx;
 	uint8_t _my;
-	direction _mdir;
+	Direction _mdir;
 	int8_t _menemy;
 	int32_t _mhitpoints;
 	uint8_t _currlevel;
@@ -196,7 +213,7 @@ struct TCmdGolem {
 
 struct TCmdQuest {
 	_cmd_id bCmd;
-	uint8_t q;
+	int8_t q;
 	quest_state qstate;
 	uint8_t qlog;
 	uint8_t qvar1;
@@ -235,6 +252,10 @@ struct TCmdPItem {
 	uint8_t y;
 	uint16_t wIndx;
 	uint16_t wCI;
+	/**
+	 * Item identifier
+	 * @see Item::_iSeed
+	 */
 	int32_t dwSeed;
 	uint8_t bId;
 	uint8_t bDur;
@@ -304,8 +325,6 @@ struct TSyncHeader {
 	_cmd_id bCmd;
 	uint8_t bLevel;
 	uint16_t wLen;
-	uint8_t bObjId;
-	uint8_t bObjCmd;
 	uint8_t bItemI;
 	uint8_t bItemX;
 	uint8_t bItemY;
@@ -324,12 +343,6 @@ struct TSyncHeader {
 	uint16_t wPInvCI;
 	uint32_t dwPInvSeed;
 	uint8_t bPInvId;
-	uint16_t wToHit;
-	uint16_t wMaxDam;
-	uint8_t bMinStr;
-	uint8_t bMinMag;
-	uint8_t bMinDex;
-	uint8_t bAC;
 };
 
 struct TSyncMonster {
@@ -356,13 +369,13 @@ struct TPktHdr {
 
 struct TPkt {
 	TPktHdr hdr;
-	uint8_t body[493];
+	byte body[493];
 };
 
 struct DMonsterStr {
 	uint8_t _mx;
 	uint8_t _my;
-	direction _mdir;
+	Direction _mdir;
 	uint8_t _menemy;
 	uint8_t _mactive;
 	int32_t _mhitpoints;
@@ -402,17 +415,9 @@ struct DJunk {
 };
 #pragma pack(pop)
 
-#pragma pack(push, 1)
-struct TMegaPkt {
-	struct TMegaPkt *pNext;
-	uint32_t dwSpaceLeft;
-	uint8_t data[32000];
-};
-#pragma pack(pop)
-
 struct TBuffer {
 	uint32_t dwNextWriteOffset;
-	uint8_t bData[4096];
+	byte bData[4096];
 };
 
 extern bool deltaload;
@@ -424,7 +429,7 @@ bool msg_wait_resync();
 void run_delta_info();
 void DeltaExportData(int pnum);
 void delta_init();
-void delta_kill_monster(int mi, BYTE x, BYTE y, BYTE bLevel);
+void delta_kill_monster(int mi, Point position, BYTE bLevel);
 void delta_monster_hp(int mi, int hp, BYTE bLevel);
 void delta_sync_monster(const TSyncMonster *pSync, BYTE bLevel);
 bool delta_portal_inited(int i);
@@ -433,24 +438,26 @@ void DeltaAddItem(int ii);
 void DeltaSaveLevel();
 void DeltaLoadLevel();
 void NetSendCmd(bool bHiPri, _cmd_id bCmd);
-void NetSendCmdGolem(BYTE mx, BYTE my, direction dir, BYTE menemy, int hp, BYTE cl);
-void NetSendCmdLoc(int playerId, bool bHiPri, _cmd_id bCmd, BYTE x, BYTE y);
-void NetSendCmdLocParam1(bool bHiPri, _cmd_id bCmd, BYTE x, BYTE y, WORD wParam1);
-void NetSendCmdLocParam2(bool bHiPri, _cmd_id bCmd, BYTE x, BYTE y, WORD wParam1, WORD wParam2);
-void NetSendCmdLocParam3(bool bHiPri, _cmd_id bCmd, BYTE x, BYTE y, WORD wParam1, WORD wParam2, WORD wParam3);
-void NetSendCmdParam1(bool bHiPri, _cmd_id bCmd, WORD wParam1);
-void NetSendCmdParam2(bool bHiPri, _cmd_id bCmd, WORD wParam1, WORD wParam2);
-void NetSendCmdParam3(bool bHiPri, _cmd_id bCmd, WORD wParam1, WORD wParam2, WORD wParam3);
-void NetSendCmdQuest(bool bHiPri, BYTE q);
+void NetSendCmdGolem(BYTE mx, BYTE my, Direction dir, BYTE menemy, int hp, BYTE cl);
+void NetSendCmdLoc(int playerId, bool bHiPri, _cmd_id bCmd, Point position);
+void NetSendCmdLocParam1(bool bHiPri, _cmd_id bCmd, Point position, uint16_t wParam1);
+void NetSendCmdLocParam2(bool bHiPri, _cmd_id bCmd, Point position, uint16_t wParam1, uint16_t wParam2);
+void NetSendCmdLocParam3(bool bHiPri, _cmd_id bCmd, Point position, uint16_t wParam1, uint16_t wParam2, uint16_t wParam3);
+void NetSendCmdLocParam4(bool bHiPri, _cmd_id bCmd, Point position, uint16_t wParam1, uint16_t wParam2, uint16_t wParam3, uint16_t wParam4);
+void NetSendCmdParam1(bool bHiPri, _cmd_id bCmd, uint16_t wParam1);
+void NetSendCmdParam2(bool bHiPri, _cmd_id bCmd, uint16_t wParam1, uint16_t wParam2);
+void NetSendCmdParam3(bool bHiPri, _cmd_id bCmd, uint16_t wParam1, uint16_t wParam2, uint16_t wParam3);
+void NetSendCmdParam4(bool bHiPri, _cmd_id bCmd, uint16_t wParam1, uint16_t wParam2, uint16_t wParam3, uint16_t wParam4);
+void NetSendCmdQuest(bool bHiPri, const Quest &quest);
 void NetSendCmdGItem(bool bHiPri, _cmd_id bCmd, BYTE mast, BYTE pnum, BYTE ii);
-void NetSendCmdPItem(bool bHiPri, _cmd_id bCmd, BYTE x, BYTE y);
+void NetSendCmdPItem(bool bHiPri, _cmd_id bCmd, Point position);
 void NetSendCmdChItem(bool bHiPri, BYTE bLoc);
 void NetSendCmdDelItem(bool bHiPri, BYTE bLoc);
 void NetSendCmdDItem(bool bHiPri, int ii);
-void NetSendCmdDamage(bool bHiPri, BYTE bPlr, DWORD dwDam);
-void NetSendCmdMonDmg(bool bHiPri, WORD bMon, DWORD dwDam);
+void NetSendCmdDamage(bool bHiPri, uint8_t bPlr, uint32_t dwDam);
+void NetSendCmdMonDmg(bool bHiPri, uint16_t wMon, uint32_t dwDam);
 void NetSendCmdString(uint32_t pmask, const char *pszStr);
 void delta_close_portal(int pnum);
-DWORD ParseCmd(int pnum, TCmd *pCmd);
+uint32_t ParseCmd(int pnum, TCmd *pCmd);
 
 } // namespace devilution

@@ -6,7 +6,7 @@
 namespace devilution {
 namespace {
 
-std::vector<UiItemBase *> vecTitleScreen;
+std::vector<std::unique_ptr<UiItemBase>> vecTitleScreen;
 
 void TitleLoad()
 {
@@ -25,9 +25,6 @@ void TitleFree()
 	ArtBackgroundWidescreen.Unload();
 	ArtLogos[LOGO_BIG].Unload();
 
-	for (auto pUIItem : vecTitleScreen) {
-		delete pUIItem;
-	}
 	vecTitleScreen.clear();
 }
 
@@ -37,14 +34,14 @@ void UiTitleDialog()
 {
 	if (gbIsHellfire) {
 		SDL_Rect rect = { 0, UI_OFFSET_Y, 0, 0 };
-		vecTitleScreen.push_back(new UiImage(&ArtBackgroundWidescreen, /*bAnimated=*/true, /*iFrame=*/0, rect, UIS_CENTER));
-		vecTitleScreen.push_back(new UiImage(&ArtBackground, /*bAnimated=*/true, /*iFrame=*/0, rect, UIS_CENTER));
+		vecTitleScreen.push_back(std::make_unique<UiImage>(&ArtBackgroundWidescreen, rect, UiFlags::AlignCenter, /*bAnimated=*/true));
+		vecTitleScreen.push_back(std::make_unique<UiImage>(&ArtBackground, rect, UiFlags::AlignCenter, /*bAnimated=*/true));
 	} else {
 		UiAddBackground(&vecTitleScreen);
 		UiAddLogo(&vecTitleScreen, LOGO_BIG, 182);
 
-		SDL_Rect rect = { (Sint16)(PANEL_LEFT + 49), (Sint16)(UI_OFFSET_Y + 410), 550, 26 };
-		vecTitleScreen.push_back(new UiArtText(_("Copyright \xA9 1996-2001 Blizzard Entertainment"), rect, UIS_MED | UIS_CENTER));
+		SDL_Rect rect = { (Sint16)(PANEL_LEFT), (Sint16)(UI_OFFSET_Y + 410), 640, 26 };
+		vecTitleScreen.push_back(std::make_unique<UiArtText>(_("Copyright © 1996-2001 Blizzard Entertainment"), rect, UiFlags::AlignCenter | UiFlags::FontSize24 | UiFlags::ColorUiSilver));
 	}
 	TitleLoad();
 

@@ -6,8 +6,11 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
+#include "engine.h"
 #include "effects.h"
+#include "utils/stdcompat/cstddef.hpp"
 
 namespace devilution {
 
@@ -85,12 +88,32 @@ typedef enum missile_graphic_id : uint8_t {
 	MFILE_BONEDEMON,
 	MFILE_EXORA1,
 	MFILE_EXBL3,
-	MFILE_NONE, // BUGFIX: should be `MFILE_NONE = MFILE_SCBSEXPD+1`, i.e. MFILE_NULL, since there would otherwise be an out-of-bounds in SetMissAnim when accessing misfiledata for any of the missiles that have MFILE_NONE as mFileNum in missiledata. (fixed)
+	MFILE_NONE, // BUGFIX: should be `MFILE_NONE = MFILE_SCBSEXPD+1`, i.e. MFILE_NULL, since there would otherwise be an out-of-bounds in SetMissAnim when accessing MissileSpriteData for any of the missiles that have MFILE_NONE as mFileNum in MissileData. (fixed)
 } missile_graphic_id;
 
-typedef struct MissileData {
-	void (*mAddProc)(int, int, int, int, int, int, int8_t, int, int);
-	void (*mProc)(int);
+/**
+ * @brief Specifies what if and how movement distribution is applied
+ */
+enum class MissileMovementDistrubution {
+	/**
+      * @brief No movement distribution is calculated. Normally this means the missile doesn't move at all.
+      */
+	Disabled,
+	/**
+      * @brief The missile moves and if it hits a enemey it stops (for example firebolt)
+      */
+	Blockable,
+	/**
+      * @brief The missile moves and even it hits a enemy it keeps moving (for example flame wave)
+      */
+	Unblockable,
+};
+
+struct Missile;
+
+struct MissileData {
+	void (*mAddProc)(Missile &, Point, Direction);
+	void (*mProc)(Missile &);
 	uint8_t mName;
 	bool mDraw;
 	uint8_t mType;
@@ -98,21 +121,44 @@ typedef struct MissileData {
 	uint8_t mFileNum;
 	_sfx_id mlSFX;
 	_sfx_id miSFX;
-} MissileData;
+	MissileMovementDistrubution MovementDistribution;
+};
 
-typedef struct MisFileData {
-	const char *mName;
-	uint8_t mAnimName;
-	uint8_t mAnimFAmt;
-	uint32_t mFlags;
-	BYTE *mAnimData[16];
-	uint8_t mAnimDelay[16];
-	uint8_t mAnimLen[16];
-	int16_t mAnimWidth[16];
-	int16_t mAnimWidth2[16];
-} MisFileData;
+enum class MissileDataFlags {
+	// clang-format off
+	None         = 0,
+	MonsterOwned = 1 << 0,
+	NotAnimated  = 1 << 1,
+	// clang-format on
+};
 
-extern MissileData missiledata[];
-extern MisFileData misfiledata[];
+struct MissileFileData {
+	const char *name;
+	uint8_t animName;
+	uint8_t animFAmt;
+	MissileDataFlags flags;
+	std::array<uint8_t, 16> animDelay = {};
+	std::array<uint8_t, 16> animLen = {};
+	int16_t animWidth;
+	int16_t animWidth2;
+	std::array<std::unique_ptr<byte[]>, 16> animData;
+
+	MissileFileData(const char *name, uint8_t animName, uint8_t animFAmt, MissileDataFlags flags,
+	    std::initializer_list<uint8_t> animDelay, std::initializer_list<uint8_t> animLen,
+	    int16_t animWidth, int16_t animWidth2);
+
+	void LoadGFX();
+
+	void FreeGFX()
+	{
+		animData = {};
+	}
+};
+
+extern MissileData MissilesData[];
+extern MissileFileData MissileSpriteData[];
+
+void InitMissileGFX(bool loadHellfireGraphics = false);
+void FreeMissileGFX();
 
 } // namespace devilution

@@ -8,6 +8,7 @@
 
 #include "appfat.h"
 #include "multi.h"
+#include "utils/stdcompat/string_view.hpp"
 
 namespace devilution {
 
@@ -72,36 +73,6 @@ struct _SNETEVENT {
 #define WINAPI
 #endif
 
-#ifdef __cplusplus
-struct CCritSect {
-	SDL_mutex *m_critsect;
-
-	CCritSect()
-	{
-		m_critsect = SDL_CreateMutex();
-		if (m_critsect == NULL) {
-			ErrSdl();
-		}
-	}
-	~CCritSect()
-	{
-		SDL_DestroyMutex(m_critsect);
-	}
-	void Enter()
-	{
-		if (SDL_LockMutex(m_critsect) < 0) {
-			ErrSdl();
-		}
-	}
-	void Leave()
-	{
-		if (SDL_UnlockMutex(m_critsect) < 0) {
-			ErrSdl();
-		}
-	}
-};
-#endif
-
 // Game states
 #define GAMESTATE_PRIVATE 0x01
 #define GAMESTATE_FULL 0x02
@@ -132,7 +103,7 @@ bool SNetDestroy();
  *
  *  Returns true if the function was called successfully and false otherwise.
  */
-bool SNetDropPlayer(int playerid, DWORD flags);
+bool SNetDropPlayer(int playerid, uint32_t flags);
 
 /*  SNetGetGameInfo @ 107
  *
@@ -156,34 +127,7 @@ bool SNetGetGameInfo(game_info type, void *dst, unsigned int length);
  *
  *  Returns true if the function was called successfully and false otherwise.
  */
-bool SNetGetTurnsInTransit(
-    DWORD *turns);
-
-// Network provider structures
-typedef struct _client_info {
-	DWORD dwSize; // 60
-	char *pszName;
-	char *pszVersion;
-	DWORD dwProduct;
-	DWORD dwVerbyte;
-	DWORD dwUnk5;
-	DWORD dwMaxPlayers;
-	DWORD dwUnk7;
-	DWORD dwUnk8;
-	DWORD dwUnk9;
-	DWORD dwUnk10; // 0xFF
-	char *pszCdKey;
-	char *pszCdOwner;
-	DWORD dwIsShareware;
-	DWORD dwLangId;
-} client_info;
-
-typedef struct _user_info {
-	DWORD dwSize; // 16
-	char *pszPlayerName;
-	char *pszUnknown;
-	DWORD dwUnknown;
-} user_info;
+bool SNetGetTurnsInTransit(uint32_t *turns);
 
 bool SNetJoinGame(char *gameName, char *gamePassword, int *playerid);
 
@@ -198,8 +142,8 @@ bool SNetJoinGame(char *gameName, char *gamePassword, int *playerid);
  */
 bool SNetLeaveGame(int type);
 
-bool SNetReceiveMessage(int *senderplayerid, char **data, int *databytes);
-bool SNetReceiveTurns(int a1, int arraysize, char **arraydata, DWORD *arraydatabytes, DWORD *arrayplayerstatus);
+bool SNetReceiveMessage(int *senderplayerid, void **data, uint32_t *databytes);
+bool SNetReceiveTurns(int arraysize, char **arraydata, size_t *arraydatabytes, uint32_t *arrayplayerstatus);
 
 typedef void (*SEVTHANDLER)(struct _SNETEVENT *);
 
@@ -244,45 +188,17 @@ bool SNetSendTurn(char *data, unsigned int databytes);
 bool SFileOpenFile(const char *filename, HANDLE *phFile);
 
 // Functions implemented in StormLib
+#if defined(_WIN64) || defined(_WIN32)
+bool WINAPI SFileOpenArchive(const wchar_t *szMpqName, DWORD dwPriority, DWORD dwFlags, HANDLE *phMpq);
+#else
 bool WINAPI SFileOpenArchive(const char *szMpqName, DWORD dwPriority, DWORD dwFlags, HANDLE *phMpq);
+#endif
 bool WINAPI SFileCloseArchive(HANDLE hArchive);
 bool WINAPI SFileOpenFileEx(HANDLE hMpq, const char *szFileName, DWORD dwSearchScope, HANDLE *phFile);
-bool WINAPI SFileReadFile(HANDLE hFile, void *buffer, DWORD nNumberOfBytesToRead, DWORD *read, LONG *lpDistanceToMoveHigh);
-DWORD WINAPI SFileGetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh);
+bool WINAPI SFileReadFile(HANDLE hFile, void *buffer, size_t nNumberOfBytesToRead, size_t *read, int *lpDistanceToMoveHigh);
+DWORD WINAPI SFileGetFileSize(HANDLE hFile, uint32_t *lpFileSizeHigh = nullptr);
 DWORD WINAPI SFileSetFilePointer(HANDLE, int, int *, int);
 bool WINAPI SFileCloseFile(HANDLE hFile);
-
-/*  SBmpLoadImage @ 323
- *
- *  Load an image from an available archive into a buffer.
- *
- *  pszFileName:  The name of the graphic in an active archive.
- *  pPalette:     An optional buffer that receives the image palette.
- *  pBuffer:      A buffer that receives the image data.
- *  dwBuffersize: The size of the specified image buffer.
- *  pdwWidth:     An optional variable that receives the image width.
- *  pdwHeight:    An optional variable that receives the image height.
- *  pdwBpp:       An optional variable that receives the image bits per pixel.
- *
- *  Returns true if the image was supported and loaded correctly, false otherwise.
- */
-bool SBmpLoadImage(
-    const char *pszFileName,
-    SDL_Color *pPalette,
-    BYTE *pBuffer,
-    DWORD dwBuffersize,
-    DWORD *pdwWidth,
-    DWORD *pdwHeight,
-    DWORD *pdwBpp);
-
-bool getIniBool(const char *sectionName, const char *keyName, bool defaultValue = false);
-float getIniFloat(const char *sectionName, const char *keyName, float defaultValue);
-bool getIniValue(const char *sectionName, const char *keyName, char *string, int stringSize, const char *defaultString = "");
-void setIniValue(const char *sectionName, const char *keyName, const char *value, int len = 0);
-void SaveIni();
-int getIniInt(const char *keyname, const char *valuename, int defaultValue);
-void setIniInt(const char *keyname, const char *valuename, int value);
-void setIniFloat(const char *keyname, const char *valuename, float value);
 
 // These error codes are used and returned by StormLib.
 // See StormLib/src/StormPort.h
@@ -302,7 +218,7 @@ void setIniFloat(const char *keyname, const char *valuename, float value);
  *
  *  Returns the last error set within the Storm library.
  */
-DWORD SErrGetLastError();
+uint32_t SErrGetLastError();
 
 /*  SErrSetLastError @ 465
  *
@@ -310,7 +226,7 @@ DWORD SErrGetLastError();
  *
  *  dwErrCode:  The error code that will be set.
  */
-void SErrSetLastError(DWORD dwErrCode);
+void SErrSetLastError(uint32_t dwErrCode);
 
 // Values for dwErrCode
 #define STORM_ERROR_GAME_TERMINATED 0x85100069
@@ -330,19 +246,28 @@ void SErrSetLastError(DWORD dwErrCode);
  */
 void SStrCopy(char *dest, const char *src, int max_length);
 
-bool SFileSetBasePath(const char *);
-bool SNetGetOwnerTurnsWaiting(DWORD *);
-bool SNetUnregisterEventHandler(event_type, SEVTHANDLER);
+void SFileSetBasePath(string_view path);
+bool SNetGetOwnerTurnsWaiting(uint32_t *);
+bool SNetUnregisterEventHandler(event_type);
 bool SNetRegisterEventHandler(event_type, SEVTHANDLER);
 bool SNetSetBasePlayer(int);
 bool SNetInitializeProvider(uint32_t provider, struct GameData *gameData);
-int SNetGetProviderCaps(struct _SNETCAPS *);
+void SNetGetProviderCaps(struct _SNETCAPS *);
 bool SFileEnableDirectAccess(bool enable);
 
 #if defined(__GNUC__) || defined(__cplusplus)
 }
 
 // Additions to Storm API:
+#if defined(_WIN64) || defined(_WIN32)
+// On Windows, handles wchar conversion and calls the wchar version of SFileOpenArchive.
+bool SFileOpenArchive(const char *szMpqName, DWORD dwPriority, DWORD dwFlags, HANDLE *phMpq);
+#endif
+
+// Locks ReadFile and CloseFile under a mutex.
+// See https://github.com/ladislav-zezula/StormLib/issues/175
+bool SFileReadFileThreadSafe(HANDLE hFile, void *buffer, size_t nNumberOfBytesToRead, size_t *read = nullptr, int *lpDistanceToMoveHigh = nullptr);
+bool SFileCloseFileThreadSafe(HANDLE hFile);
 
 // Sets the file's 64-bit seek position.
 inline std::uint64_t SFileSetFilePointer(HANDLE hFile, std::int64_t offset, int whence)

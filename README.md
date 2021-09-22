@@ -8,10 +8,6 @@
 [![GitHub Stars](https://img.shields.io/github/stars/diasurgical/devilutionX.svg)](https://github.com/diasurgical/devilutionX/stargazers)
 [![Codecov](https://codecov.io/gh/diasurgical/devilutionX/branch/master/graph/badge.svg)](https://codecov.io/gh/diasurgical/devilutionX)
 [![BCH compliance](https://bettercodehub.com/edge/badge/diasurgical/devilutionX?branch=master)](https://bettercodehub.com/)
-[![CircleCI](https://circleci.com/gh/diasurgical/devilutionX.svg?style=shield)](https://circleci.com/gh/diasurgical/devilutionX)
-[![AppVeyor](https://ci.appveyor.com/api/projects/status/1a0jus2372qvksht?svg=true)](https://ci.appveyor.com/project/AJenbo/devilutionx)
-[![GitHub Actions](https://github.com/diasurgical/devilutionX/actions/workflows/cmake.yml/badge.svg?branch=master)](https://github.com/diasurgical/devilutionX/actions/workflows/cmake.yml)
-
 
 ![Discord Channel](https://avatars3.githubusercontent.com/u/1965106?s=16&v=4) [Discord Chat Channel](https://discord.gg/YQKCAYQ)
 
@@ -47,6 +43,19 @@ We are always looking for more people to help with [coding](docs/CONTRIBUTING.md
 # Mods
 
 We hope to provide a good starting point for mods, in addition to the full Devilution source code we also provide modding tools. Also, check out the list of known [mods based on DevilutionX](https://github.com/diasurgical/devilutionX/wiki/Mods-and-related-projects).
+
+# Test builds
+
+If you want to help test the latest state of the next version you can fetch the build artifact from one of the build server:
+
+[![CircleCI](https://circleci.com/gh/diasurgical/devilutionX.svg?style=shield)](https://app.circleci.com/pipelines/github/diasurgical/devilutionX?branch=master)
+[![AppVeyor](https://ci.appveyor.com/api/projects/status/1a0jus2372qvksht/branch/master?svg=true)](https://ci.appveyor.com/project/AJenbo/devilutionx)
+[![Linux_x86](https://github.com/diasurgical/devilutionX/actions/workflows/Linux_x86.yml/badge.svg)](https://github.com/diasurgical/devilutionX/actions/workflows/Linux_x86.yml?query=branch%3Amaster)
+[![Linux_x86_64](https://github.com/diasurgical/devilutionX/actions/workflows/Linux_x86_64.yml/badge.svg)](https://github.com/diasurgical/devilutionX/actions/workflows/Linux_x86_64.yml?query=branch%3Amaster)
+[![Linux_x86_64_SDL1](https://github.com/diasurgical/devilutionX/actions/workflows/Linux_x86_64_SDL1.yml/badge.svg)](https://github.com/diasurgical/devilutionX/actions/workflows/Linux_x86_64_SDL1.yml?query=branch%3Amaster)
+[![MacOSX](https://github.com/diasurgical/devilutionX/actions/workflows/MacOSX.yml/badge.svg)](https://github.com/diasurgical/devilutionX/actions/workflows/MacOSX.yml?query=branch%3Amaster)
+[![Windows_x64](https://github.com/diasurgical/devilutionX/actions/workflows/Windows_x64.yml/badge.svg)](https://github.com/diasurgical/devilutionX/actions/workflows/Windows_x64.yml?query=branch%3Amaster)
+[![Windows_x86](https://github.com/diasurgical/devilutionX/actions/workflows/Windows_x86.yml/badge.svg)](https://github.com/diasurgical/devilutionX/actions/workflows/Windows_x86.yml?query=branch%3Amaster)
 
 # Building from Source
 

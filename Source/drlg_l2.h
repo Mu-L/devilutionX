@@ -6,7 +6,6 @@
 #pragma once
 
 #include "gendung.h"
-#include "miniwin/miniwin.h"
 
 namespace devilution {
 
@@ -16,7 +15,6 @@ struct HALLNODE {
 	int nHallx2;
 	int nHally2;
 	int nHalldir;
-	struct HALLNODE *pNext;
 };
 
 struct ROOMNODE {
@@ -24,14 +22,12 @@ struct ROOMNODE {
 	int nRoomy1;
 	int nRoomx2;
 	int nRoomy2;
-	int nRoomDest;
 };
 
 extern BYTE predungeon[DMAXX][DMAXY];
 
-void InitDungeon();
-void LoadL2Dungeon(const char *sFileName, int vx, int vy);
-void LoadPreL2Dungeon(const char *sFileName);
-void CreateL2Dungeon(DWORD rseed, lvl_entry entry);
+void LoadL2Dungeon(const char *path, int vx, int vy);
+void LoadPreL2Dungeon(const char *path);
+void CreateL2Dungeon(uint32_t rseed, lvl_entry entry);
 
 } // namespace devilution

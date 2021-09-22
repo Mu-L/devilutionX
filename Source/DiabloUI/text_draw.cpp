@@ -3,38 +3,35 @@
 #include "DiabloUI/art_draw.h"
 #include "DiabloUI/diabloui.h"
 #include "DiabloUI/fonts.h"
-#include "DiabloUI/text.h"
 #include "DiabloUI/ttf_render_wrapped.h"
 #include "DiabloUI/ui_item.h"
 #include "utils/display.h"
 
 namespace devilution {
 
-extern SDL_Surface *pal_surface;
-
 namespace {
 
-TextAlignment XAlignmentFromFlags(int flags)
+TextAlignment XAlignmentFromFlags(UiFlags flags)
 {
-	if ((flags & UIS_CENTER) != 0)
+	if (HasAnyOf(flags, UiFlags::AlignCenter))
 		return TextAlignment_CENTER;
-	if ((flags & UIS_RIGHT) != 0)
+	if (HasAnyOf(flags, UiFlags::AlignRight))
 		return TextAlignment_END;
 	return TextAlignment_BEGIN;
 }
 
-int AlignXOffset(int flags, const SDL_Rect &dest, int w)
+int AlignXOffset(UiFlags flags, const SDL_Rect &dest, int w)
 {
-	if ((flags & UIS_CENTER) != 0)
+	if (HasAnyOf(flags, UiFlags::AlignCenter))
 		return (dest.w - w) / 2;
-	if ((flags & UIS_RIGHT) != 0)
+	if (HasAnyOf(flags, UiFlags::AlignRight))
 		return dest.w - w;
 	return 0;
 }
 
 } // namespace
 
-void DrawTTF(const char *text, const SDL_Rect &rectIn, int flags,
+void DrawTTF(const char *text, const SDL_Rect &rectIn, UiFlags flags,
     const SDL_Color &textColor, const SDL_Color &shadowColor,
     TtfSurfaceCache &renderCache)
 {
@@ -44,9 +41,9 @@ void DrawTTF(const char *text, const SDL_Rect &rectIn, int flags,
 
 	const auto xAlign = XAlignmentFromFlags(flags);
 	if (renderCache.text == nullptr)
-		renderCache.text = ScaleSurfaceToOutput(SDLSurfaceUniquePtr { RenderUTF8_Solid_Wrapped(font, text, textColor, rect.w, xAlign) });
+		renderCache.text = ScaleSurfaceToOutput(RenderUTF8_Solid_Wrapped(font, text, textColor, rect.w, xAlign));
 	if (renderCache.shadow == nullptr)
-		renderCache.shadow = ScaleSurfaceToOutput(SDLSurfaceUniquePtr { RenderUTF8_Solid_Wrapped(font, text, shadowColor, rect.w, xAlign) });
+		renderCache.shadow = ScaleSurfaceToOutput(RenderUTF8_Solid_Wrapped(font, text, shadowColor, rect.w, xAlign));
 
 	SDL_Surface *textSurface = renderCache.text.get();
 	SDL_Surface *shadowSurface = renderCache.shadow.get();
@@ -56,7 +53,7 @@ void DrawTTF(const char *text, const SDL_Rect &rectIn, int flags,
 	SDL_Rect destRect = rect;
 	ScaleOutputRect(&destRect);
 	destRect.x += AlignXOffset(flags, destRect, textSurface->w);
-	destRect.y += (flags & UIS_VCENTER) != 0 ? (destRect.h - textSurface->h) / 2 : 0;
+	destRect.y += HasAnyOf(flags, UiFlags::VerticalCenter) ? (destRect.h - textSurface->h) / 2 : 0;
 
 	SDL_Rect shadowRect = destRect;
 	++shadowRect.x;
@@ -65,37 +62,6 @@ void DrawTTF(const char *text, const SDL_Rect &rectIn, int flags,
 		ErrSdl();
 	if (SDL_BlitSurface(textSurface, nullptr, DiabloUiSurface(), &destRect) < 0)
 		ErrSdl();
-}
-
-void DrawArtStr(const char *text, const SDL_Rect &rect, int flags, bool drawTextCursor)
-{
-	_artFontTables size = AFT_SMALL;
-	_artFontColors color = (flags & UIS_GOLD) != 0 ? AFC_GOLD : AFC_SILVER;
-
-	if ((flags & UIS_MED) != 0)
-		size = AFT_MED;
-	else if ((flags & UIS_BIG) != 0)
-		size = AFT_BIG;
-	else if ((flags & UIS_HUGE) != 0)
-		size = AFT_HUGE;
-
-	const int x = rect.x + AlignXOffset(flags, rect, GetArtStrWidth(text, size));
-	const int y = rect.y + ((flags & UIS_VCENTER) != 0 ? (rect.h - ArtFonts[size][color].h()) / 2 : 0);
-
-	int sx = x, sy = y;
-	for (size_t i = 0, n = strlen(text); i < n; i++) {
-		if (text[i] == '\n') {
-			sx = x;
-			sy += ArtFonts[size][color].h();
-			continue;
-		}
-		BYTE w = FontTables[size][*(BYTE *)&text[i] + 2] != 0 ? FontTables[size][*(BYTE *)&text[i] + 2] : FontTables[size][0];
-		DrawArt(sx, sy, &ArtFonts[size][color], *(BYTE *)&text[i], w);
-		sx += w;
-	}
-	if (drawTextCursor && GetAnimationFrame(2, 500) != 0) {
-		DrawArt(sx, sy, &ArtFonts[size][color], '|');
-	}
 }
 
 } // namespace devilution

@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstring>
+#include <vector>
+#include <algorithm>
 
 #include <SDL.h>
 #ifdef USE_SDL1
@@ -10,69 +12,52 @@
 #include "utils/sdl2_backports.h"
 #endif
 
-#include "utils/sdl_compat.h"
 #include "utils/log.hpp"
+#include "utils/sdl_compat.h"
+#include "utils/sdl_wrap.h"
+#include "utils/ttf_wrap.h"
 
 namespace devilution {
 
 namespace {
 
-SDL_bool CharacterIsDelimiter(char c, const char *delimiters)
+bool CharacterIsDelimiter(char c)
 {
-	while (*delimiters != '\0') {
-		if (c == *delimiters)
-			return SDL_TRUE;
-		++delimiters;
-	}
-	return SDL_FALSE;
+	constexpr char Delimiters[] = { ' ', '\t', '\r', '\n' };
+
+	return std::find(std::begin(Delimiters), std::end(Delimiters), c) != std::end(Delimiters);
 }
 
 } // namespace
 
 // Based on SDL 2.0.12 TTF_RenderUTF8_Blended_Wrapped
-SDL_Surface *RenderUTF8_Solid_Wrapped(TTF_Font *font, const char *text, SDL_Color fg, Uint32 wrapLength, const int xAlign)
+SDLSurfaceUniquePtr RenderUTF8_Solid_Wrapped(TTF_Font *font, const char *text, SDL_Color fg, Uint32 wrapLength, const int xAlign)
 {
-	int width, height;
-	SDL_Surface *textbuf;
+	int width = 0;
+	int height = 0;
 	const int lineSpace = 2;
-	char *str, **strLines;
 
 	/* Get the dimensions of the text surface */
 	if (TTF_SizeUTF8(font, text, &width, &height) < 0 || width == 0) {
 		TTF_SetError("Text has zero width");
-		return nullptr;
+		return {};
 	}
 
-	std::size_t numLines = 1;
-	str = nullptr;
-	strLines = nullptr;
+	std::unique_ptr<char[]> str;
+	std::vector<char *> strLines;
 	if (wrapLength > 0 && *text != '\0') {
-		const char *wrapDelims = " \t\r\n";
-		int w, h;
-		char *spot, *tok, *nextTok, *end;
-		char delim;
 		const std::size_t strLen = std::strlen(text);
 
-		numLines = 0;
+		str.reset(new char[strLen + 1]);
 
-		str = SDL_stack_alloc(char, strLen + 1);
-		if (str == nullptr) {
-			TTF_SetError("Out of memory");
-			return nullptr;
-		}
-
-		std::memcpy(str, text, strLen + 1);
-		tok = str;
-		end = str + strLen;
+		std::memcpy(str.get(), text, strLen + 1);
+		char *tok = str.get();
+		char *end = str.get() + strLen;
 		do {
-			strLines = (char **)SDL_realloc(strLines, (numLines + 1) * sizeof(*strLines));
-			if (strLines == nullptr) {
-				TTF_SetError("Out of memory");
-				return nullptr;
-			}
-			strLines[numLines++] = tok;
+			strLines.push_back(tok);
 
 			/* Look for the end of the line */
+			char *spot;
 			if ((spot = SDL_strchr(tok, '\r')) != nullptr || (spot = SDL_strchr(tok, '\n')) != nullptr) {
 				if (*spot == '\r') {
 					++spot;
@@ -83,23 +68,25 @@ SDL_Surface *RenderUTF8_Solid_Wrapped(TTF_Font *font, const char *text, SDL_Colo
 			} else {
 				spot = end;
 			}
-			nextTok = spot;
+			char *nextTok = spot;
 
 			/* Get the longest string that will fit in the desired space */
 			for (;;) {
 				/* Strip trailing whitespace */
-				while (spot > tok && CharacterIsDelimiter(spot[-1], wrapDelims) == SDL_TRUE) {
+				while (spot > tok && CharacterIsDelimiter(spot[-1])) {
 					--spot;
 				}
 				if (spot == tok) {
-					if (CharacterIsDelimiter(*spot, wrapDelims) == SDL_TRUE) {
+					if (CharacterIsDelimiter(*spot)) {
 						*spot = '\0';
 					}
 					break;
 				}
-				delim = *spot;
+				char delim = *spot;
 				*spot = '\0';
 
+				int w = 0;
+				int h = 0;
 				TTF_SizeUTF8(font, tok, &w, &h);
 				if ((Uint32)w <= wrapLength) {
 					break;
@@ -107,7 +94,7 @@ SDL_Surface *RenderUTF8_Solid_Wrapped(TTF_Font *font, const char *text, SDL_Colo
 				/* Back up and try again... */
 				*spot = delim;
 
-				while (spot > tok && (CharacterIsDelimiter(spot[-1], wrapDelims) == SDL_FALSE)) {
+				while (spot > tok && !CharacterIsDelimiter(spot[-1])) {
 					--spot;
 				}
 				if (spot > tok) {
@@ -118,19 +105,11 @@ SDL_Surface *RenderUTF8_Solid_Wrapped(TTF_Font *font, const char *text, SDL_Colo
 		} while (tok < end);
 	}
 
-	if (strLines == nullptr) {
-		SDL_stack_free(str);
-		return TTF_RenderUTF8_Solid(font, text, fg);
-	}
+	if (strLines.empty())
+		return TTFWrap::RenderText_Solid(font, text, fg);
 
 	/* Create the target surface */
-	textbuf = SDL_CreateRGBSurface(SDL_SWSURFACE, (numLines > 1) ? wrapLength : width, height * numLines + (lineSpace * (numLines - 1)), 8, 0, 0, 0, 0);
-	if (textbuf == nullptr) {
-		if (strLines != nullptr)
-			SDL_free(strLines);
-		SDL_stack_free(str);
-		return nullptr;
-	}
+	auto textbuf = SDLWrap::CreateRGBSurface(SDL_SWSURFACE, (strLines.size() > 1) ? wrapLength : width, height * strLines.size() + (lineSpace * (strLines.size() - 1)), 8, 0, 0, 0, 0);
 
 	/* Fill the palette with the foreground color */
 	SDL_Palette *palette = textbuf->format->palette;
@@ -140,25 +119,17 @@ SDL_Surface *RenderUTF8_Solid_Wrapped(TTF_Font *font, const char *text, SDL_Colo
 	palette->colors[1].r = fg.r;
 	palette->colors[1].g = fg.g;
 	palette->colors[1].b = fg.b;
-	SDLC_SetColorKey(textbuf, 0);
+	SDLC_SetColorKey(textbuf.get(), 0);
 
 	// Reduced space between lines to roughly match Diablo.
-	const int lineskip = 0.7 * TTF_FontLineSkip(font);
+	const int lineskip = TTF_FontLineSkip(font) * 7 / 10; // avoids forced int > float > int conversion
 	SDL_Rect dest = { 0, 0, 0, 0 };
-	for (std::size_t line = 0; line < numLines; line++) {
-		text = strLines[line];
-		if (text == nullptr || *text == '\0') {
+	for (auto text : strLines) {
+		if (*text == '\0') {
 			dest.y += lineskip;
 			continue;
 		}
-		SDL_Surface *tmp = TTF_RenderUTF8_Solid(font, text, fg);
-		if (tmp == nullptr) {
-			Log("{}", TTF_GetError());
-			SDL_FreeSurface(textbuf);
-			SDL_free(strLines);
-			SDL_stack_free(str);
-			return nullptr;
-		}
+		SDLSurfaceUniquePtr tmp = TTFWrap::RenderText_Solid(font, text, fg);
 
 		dest.w = static_cast<Uint16>(tmp->w);
 		dest.h = static_cast<Uint16>(tmp->h);
@@ -174,12 +145,9 @@ SDL_Surface *RenderUTF8_Solid_Wrapped(TTF_Font *font, const char *text, SDL_Colo
 			dest.x = 0;
 			break;
 		}
-		SDL_BlitSurface(tmp, nullptr, textbuf, &dest);
+		SDL_BlitSurface(tmp.get(), nullptr, textbuf.get(), &dest);
 		dest.y += lineskip;
-		SDL_FreeSurface(tmp);
 	}
-	SDL_free(strLines);
-	SDL_stack_free(str);
 	return textbuf;
 }
 

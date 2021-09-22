@@ -5,26 +5,28 @@
  */
 #pragma once
 
+#include <array>
 #include <cstdint>
 
+#include "engine/point.hpp"
 #include "engine.h"
 
 namespace devilution {
 
-#define MAXDEAD 31
+static constexpr unsigned MaxCorpses = 31;
 
-struct DeadStruct {
-	uint8_t *_deadData[8];
-	int _deadFrame;
-	int _deadWidth;
-	uint8_t _deadtrans;
+struct Corpse {
+	std::array<const byte *, 8> data;
+	int frame;
+	int width;
+	uint8_t translationPaletteIndex;
 };
 
-extern DeadStruct dead[MAXDEAD];
+extern Corpse Corpses[MaxCorpses];
 extern int8_t stonendx;
 
-void InitDead();
-void AddDead(int dx, int dy, int8_t dv, direction ddir);
-void SetDead();
+void InitCorpses();
+void AddCorpse(Point tilePosition, int8_t dv, Direction ddir);
+void SyncUniqDead();
 
 } // namespace devilution

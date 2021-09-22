@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include <SDL_version.h>
+
 #include "pack.h"
 
 namespace devilution {
@@ -15,7 +17,7 @@ struct HellfireOptions {
 	/** @brief Play game intro video on startup. */
 	bool bIntro;
 	/** @brief Cornerstone of the world item. */
-	char szItem[sizeof(PkItemStruct) * 2 + 1];
+	char szItem[sizeof(ItemPack) * 2 + 1];
 };
 
 struct AudioOptions {
@@ -61,6 +63,14 @@ struct GraphicsOptions {
 	int nGammaCorrection;
 	/** @brief Enable color cycling animations. */
 	bool bColorCycling;
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	/** @brief Use a hardware cursor (SDL2 only). */
+	bool bHardwareCursor;
+	/** @brief Use a hardware cursor for items. */
+	bool bHardwareCursorForItems;
+	/** @brief Maximum width / height for the hardware cursor. Larger cursors fall back to software. */
+	int nHardwareCursorMaxSize;
+#endif
 	/** @brief Enable FPS Limit. */
 	bool bFPSLimit;
 	/** @brief Show FPS, even without the -f command line flag. */
@@ -136,7 +146,7 @@ struct NetworkOptions {
 
 struct ChatOptions {
 	/** @brief Quick chat messages. */
-	char szHotKeyMsgs[4][MAX_SEND_STR_LEN];
+	char szHotKeyMsgs[QUICK_MESSAGE_OPTIONS][MAX_SEND_STR_LEN];
 };
 
 struct LanguageOptions {
@@ -156,6 +166,20 @@ struct Options {
 	LanguageOptions Language;
 };
 
+bool GetIniValue(const char *sectionName, const char *keyName, char *string, int stringSize, const char *defaultString = "");
+void SetIniValue(const char *sectionName, const char *keyName, const char *value, int len = 0);
+
 extern Options sgOptions;
+extern bool sbWasOptionsLoaded;
+
+/**
+ * @brief Save game configurations to ini file
+ */
+void SaveOptions();
+
+/**
+ * @brief Load game configurations from ini file
+ */
+void LoadOptions();
 
 } // namespace devilution

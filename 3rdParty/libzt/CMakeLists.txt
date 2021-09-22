@@ -3,16 +3,22 @@ include(FetchContent_MakeAvailableExcludeFromAll)
 include(FetchContent)
 FetchContent_Declare(libzt
   GIT_REPOSITORY https://github.com/diasurgical/libzt.git
-  GIT_TAG 97a405529d64d9589e9fc785d6d1d2c597f92478)
+  GIT_TAG 2607962e3b2c1def68479f7dc382c7508c367365)
 FetchContent_MakeAvailableExcludeFromAll(libzt)
 
 # External library, ignore all warnings
-target_compile_options(zto_obj PRIVATE -fpermissive -w)
+target_compile_options(zto_obj PRIVATE -w)
 target_compile_options(libnatpmp_obj PRIVATE -w)
-target_compile_options(libzt_obj PRIVATE -fpermissive -w)
+target_compile_options(libzt_obj PRIVATE -w)
 target_compile_options(lwip_obj PRIVATE -w)
 target_compile_options(miniupnpc_obj PRIVATE -w)
-target_compile_options(zt-static PRIVATE -fpermissive -w)
+target_compile_options(zt-static PRIVATE -w)
+
+if(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  target_compile_options(zto_obj PRIVATE -fpermissive)
+  target_compile_options(libzt_obj PRIVATE -fpermissive)
+  target_compile_options(zt-static PRIVATE -fpermissive)
+endif()
 
 target_include_directories(zt-static INTERFACE
   "${libzt_SOURCE_DIR}/include"

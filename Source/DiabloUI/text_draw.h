@@ -11,10 +11,10 @@ struct TtfSurfaceCache {
 	SDLSurfaceUniquePtr shadow;
 };
 
-void DrawTTF(const char *text, const SDL_Rect &rect, int flags,
-    const SDL_Color &text_color, const SDL_Color &shadow_color,
-    TtfSurfaceCache &render_cache);
+enum class UiFlags; // Defined in ui_item.h, declared here to avoid circular dependency
 
-void DrawArtStr(const char *text, const SDL_Rect &rect, int flags, bool drawTextCursor = false);
+void DrawTTF(const char *text, const SDL_Rect &rect, UiFlags flags,
+    const SDL_Color &textColor, const SDL_Color &shadowColor,
+    TtfSurfaceCache &renderCache);
 
 } // namespace devilution

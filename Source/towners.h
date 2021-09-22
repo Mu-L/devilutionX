@@ -6,10 +6,13 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
+#include "utils/stdcompat/string_view.hpp"
 
 #include "items.h"
 #include "player.h"
 #include "quests.h"
+#include "utils/stdcompat/cstddef.hpp"
 
 namespace devilution {
 
@@ -32,44 +35,42 @@ enum _talker_id : uint8_t {
 	NUM_TOWNER_TYPES,
 };
 
-struct TNQ {
-	uint8_t _qsttype;
-	uint8_t _qstmsg;
-	bool _qstmsgact;
-};
-
-struct TownerStruct {
-	uint8_t *_tNAnim[8];
-	uint8_t *_tNData;
-	uint8_t *_tAnimData;
-	int16_t _tSeed;
+struct Towner {
+	byte *_tNAnim[8];
+	std::unique_ptr<byte[]> data;
+	byte *_tAnimData;
+	/** Used to get a voice line and text related to active quests when the player speaks to a town npc */
+	int16_t seed;
 	/** Tile position of NPC */
 	Point position;
 	int16_t _tAnimWidth;
-	int16_t _tAnimDelay; // Tick length of each frame in the current animation
-	int16_t _tAnimCnt;   // Increases by one each game tick, counting how close we are to _pAnimDelay
-	uint8_t _tAnimLen;   // Number of frames in current animation
-	uint8_t _tAnimFrame; // Current frame of animation.
+	/** Tick length of each frame in the current animation */
+	int16_t _tAnimDelay;
+	/** Increases by one each game tick, counting how close we are to _pAnimDelay */
+	int16_t _tAnimCnt;
+	/** Number of frames in current animation */
+	uint8_t _tAnimLen;
+	/** Current frame of animation. */
+	uint8_t _tAnimFrame;
 	uint8_t _tAnimFrameCnt;
-	uint8_t _tNFrames;
-	char _tName[PLR_NAME_LEN];
-	TNQ qsts[MAXQUESTS];
-	bool _tSelFlag;
-	bool _tMsgSaid;
-	int8_t _tAnimOrder;
-	int8_t _tTalkingToPlayer;
-	bool _tbtcnt;
+	string_view name;
+	/** Specifies the animation frame sequence. */
+	const uint8_t *animOrder; // unowned
+	std::size_t animOrderSize;
+	void (*talk)(Player &player, Towner &towner);
 	_talker_id _ttype;
 };
 
-extern TownerStruct towners[NUM_TOWNERS];
+extern Towner Towners[NUM_TOWNERS];
 
 void InitTowners();
 void FreeTownerGFX();
 void ProcessTowners();
-ItemStruct *PlrHasItem(int pnum, int item, int *i);
-void TalkToTowner(int p, int t);
+void TalkToTowner(Player &player, int t);
 
-extern _speech_id Qtalklist[NUM_TOWNER_TYPES][MAXQUESTS];
+#ifdef _DEBUG
+bool DebugTalkToTowner(std::string targetName);
+#endif
+extern _speech_id QuestDialogTable[NUM_TOWNER_TYPES][MAXQUESTS];
 
 } // namespace devilution
