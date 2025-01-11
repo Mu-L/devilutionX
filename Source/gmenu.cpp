@@ -13,11 +13,12 @@
 #include "control.h"
 #include "controls/axis_direction.h"
 #include "controls/controller_motion.h"
-#include "engine.h"
 #include "engine/clx_sprite.hpp"
 #include "engine/load_cel.hpp"
 #include "engine/render/clx_render.hpp"
+#include "engine/render/primitive_render.hpp"
 #include "engine/render/text_render.hpp"
+#include "headless_mode.hpp"
 #include "options.h"
 #include "stores.h"
 #include "utils/language.h"
@@ -174,7 +175,6 @@ void gmenu_draw_pause(const Surface &out)
 	if (leveltype != DTYPE_TOWN)
 		RedBack(out);
 	if (sgpCurrentMenu == nullptr) {
-		LightTableIndex = 0;
 		DrawString(out, _("Pause"), { { 0, 0 }, { gnScreenWidth, GetMainPanel().position.y } },
 		    { .flags = UiFlags::FontSize46 | UiFlags::ColorGold | UiFlags::AlignCenter | UiFlags::VerticalCenter, .spacing = 2 });
 	}

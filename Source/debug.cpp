@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <cstdio>
 
+#include <ankerl/unordered_dense.h>
+
 #include "debug.h"
 
 #include "automap.h"
@@ -28,10 +30,11 @@ std::string TestMapPath;
 OptionalOwnedClxSpriteList pSquareCel;
 bool DebugToggle = false;
 bool DebugGodMode = false;
+bool DebugInvisible = false;
 bool DebugVision = false;
 bool DebugPath = false;
 bool DebugGrid = false;
-std::unordered_map<int, Point> DebugCoordsMap;
+ankerl::unordered_dense::map<int, Point> DebugCoordsMap;
 bool DebugScrollViewEnabled = false;
 std::string debugTRN;
 
@@ -163,6 +166,26 @@ bool GetDebugGridText(Point dungeonCoords, char *debugGridTextBuffer)
 		}
 		break;
 	}
+	case DebugGridTextItem::microTiles: {
+		std::string result;
+		const MICROS &micros = DPieceMicros[dPiece[dungeonCoords.x][dungeonCoords.y]];
+		for (const LevelCelBlock tile : micros.mt) {
+			if (!tile.hasValue()) break;
+			if (!result.empty()) result += '\n';
+			StrAppend(result, tile.frame(), " ");
+			switch (tile.type()) {
+			case TileType::Square: StrAppend(result, "S"); break;
+			case TileType::TransparentSquare: StrAppend(result, "T"); break;
+			case TileType::LeftTriangle: StrAppend(result, "<"); break;
+			case TileType::RightTriangle: StrAppend(result, ">"); break;
+			case TileType::LeftTrapezoid: StrAppend(result, "\\"); break;
+			case TileType::RightTrapezoid: StrAppend(result, "/"); break;
+			}
+		}
+		if (result.empty()) return false;
+		*BufCopy(debugGridTextBuffer, result) = '\0';
+		return true;
+	} break;
 	case DebugGridTextItem::dPiece:
 		info = dPiece[dungeonCoords.x][dungeonCoords.y];
 		break;
@@ -199,25 +222,29 @@ bool GetDebugGridText(Point dungeonCoords, char *debugGridTextBuffer)
 		info = dObject[dungeonCoords.x][dungeonCoords.y];
 		break;
 	case DebugGridTextItem::Solid:
-		info = TileHasAny(dPiece[dungeonCoords.x][dungeonCoords.y], TileProperties::Solid) << 0 | TileHasAny(dPiece[dungeonCoords.x][dungeonCoords.y], TileProperties::BlockLight) << 1 | TileHasAny(dPiece[dungeonCoords.x][dungeonCoords.y], TileProperties::BlockMissile) << 2;
+		info = TileHasAny(dungeonCoords, TileProperties::Solid) << 0 | TileHasAny(dungeonCoords, TileProperties::BlockLight) << 1 | TileHasAny(dungeonCoords, TileProperties::BlockMissile) << 2;
 		break;
 	case DebugGridTextItem::Transparent:
-		info = TileHasAny(dPiece[dungeonCoords.x][dungeonCoords.y], TileProperties::Transparent) << 0 | TileHasAny(dPiece[dungeonCoords.x][dungeonCoords.y], TileProperties::TransparentLeft) << 1 | TileHasAny(dPiece[dungeonCoords.x][dungeonCoords.y], TileProperties::TransparentRight) << 2;
+		info = TileHasAny(dungeonCoords, TileProperties::Transparent) << 0 | TileHasAny(dungeonCoords, TileProperties::TransparentLeft) << 1 | TileHasAny(dungeonCoords, TileProperties::TransparentRight) << 2;
 		break;
 	case DebugGridTextItem::Trap:
-		info = TileHasAny(dPiece[dungeonCoords.x][dungeonCoords.y], TileProperties::Trap);
+		info = TileHasAny(dungeonCoords, TileProperties::Trap);
 		break;
 	case DebugGridTextItem::AutomapView:
-		info = AutomapView[megaCoords.x][megaCoords.y];
+		if (megaCoords.x >= 0 && megaCoords.x < DMAXX && megaCoords.y >= 0 && megaCoords.y < DMAXY)
+			info = AutomapView[megaCoords.x][megaCoords.y];
 		break;
 	case DebugGridTextItem::dungeon:
-		info = dungeon[megaCoords.x][megaCoords.y];
+		if (megaCoords.x >= 0 && megaCoords.x < DMAXX && megaCoords.y >= 0 && megaCoords.y < DMAXY)
+			info = dungeon[megaCoords.x][megaCoords.y];
 		break;
 	case DebugGridTextItem::pdungeon:
-		info = pdungeon[megaCoords.x][megaCoords.y];
+		if (megaCoords.x >= 0 && megaCoords.x < DMAXX && megaCoords.y >= 0 && megaCoords.y < DMAXY)
+			info = pdungeon[megaCoords.x][megaCoords.y];
 		break;
 	case DebugGridTextItem::Protected:
-		info = Protected.test(megaCoords.x, megaCoords.y);
+		if (megaCoords.x >= 0 && megaCoords.x < DMAXX && megaCoords.y >= 0 && megaCoords.y < DMAXY)
+			info = Protected.test(megaCoords.x, megaCoords.y);
 		break;
 	case DebugGridTextItem::None:
 		return false;

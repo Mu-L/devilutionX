@@ -21,9 +21,12 @@
 #include "engine/dx.h"
 #include "engine/load_pcx.hpp"
 #include "engine/render/clx_render.hpp"
+#include "engine/ticks.hpp"
 #include "hwcursor.hpp"
+#include "init.h"
 #include "utils/algorithm/container.hpp"
 #include "utils/display.h"
+#include "utils/is_of.hpp"
 #include "utils/language.h"
 #include "utils/log.hpp"
 #include "utils/pcx_to_clx.hpp"
@@ -452,9 +455,9 @@ void UiHandleEvents(SDL_Event *event)
 			// For example, if the previous size was too large for a hardware cursor then it was invisible
 			// but may now become visible.
 			DoReinitializeHardwareCursor();
-		} else if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+		} else if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST && *sgOptions.Gameplay.pauseOnFocusLoss) {
 			music_mute();
-		} else if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+		} else if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED && *sgOptions.Gameplay.pauseOnFocusLoss) {
 			diablo_focus_unpause();
 		}
 	}
@@ -721,7 +724,7 @@ void DrawSelector(const SDL_Rect &rect)
 	const ClxSpriteList sprites = *ArtFocus[size];
 	const ClxSprite sprite = sprites[GetAnimationFrame(sprites.numSprites())];
 
-	// TODO FOCUS_MED appares higher than the box
+	// TODO FOCUS_MED appears higher than the box
 	const int y = rect.y + (rect.h - static_cast<int>(sprite.height())) / 2;
 
 	const Surface &out = Surface(DiabloUiSurface());

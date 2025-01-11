@@ -4,10 +4,9 @@
 	"dependencies": [
 		"fmt",
 		"bzip2",
-		"simpleini",
 		"lua"
 	],
-	"builtin-baseline": "37c3e63a1306562f7f59c4c3c8892ddd50fdf992",
+	"builtin-baseline": "80d54ff62d528339c626a6fbc3489a7f25956ade",
 	"features": {
 		"sdl1": {
 			"description": "Use SDL1.2 instead of SDL2",
@@ -32,7 +31,7 @@
 		},
 		"tests": {
 			"description": "Build tests",
-			"dependencies": [ "gtest" ]
+			"dependencies": [ "gtest", "benchmark" ]
 		}
 	}
 }

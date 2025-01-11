@@ -12,12 +12,17 @@
 #include "engine/sound.h"
 #include "engine/sound_defs.hpp"
 #include "gmenu.h"
-#include "init.h"
+#include "headless_mode.hpp"
 #include "loadsave.h"
+#include "multi.h"
 #include "options.h"
 #include "pfile.h"
 #include "qol/floatingnumbers.h"
 #include "utils/language.h"
+
+#ifndef USE_SDL1
+#include "controls/touch/renderers.h"
+#endif
 
 namespace devilution {
 
@@ -302,7 +307,19 @@ void gamemenu_load_game(bool /*bActivate*/)
 	InitDiabloMsg(EMSG_LOADING);
 	RedrawEverything();
 	DrawAndBlit();
-	LoadGame(false);
+#ifndef USE_SDL1
+	DeactivateVirtualGamepad();
+	FreeVirtualGamepadTextures();
+#endif
+	if (tl::expected<void, std::string> result = LoadGame(false); !result.has_value()) {
+		app_fatal(result.error());
+	}
+#if !defined(USE_SDL1) && !defined(__vita__)
+	if (renderer != nullptr) {
+		InitVirtualGamepadTextures(*renderer);
+	}
+#endif
+	NewCursor(CURSOR_HAND);
 	ClrDiabloMsg();
 	CornerStone.activated = false;
 	PaletteFadeOut(8);

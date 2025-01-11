@@ -9,7 +9,9 @@
 #include <cstdint>
 
 #include "controls/plrctrls.h"
-#include "engine.h"
+#include "engine/render/primitive_render.hpp"
+#include "headless_mode.hpp"
+#include "init.h"
 #include "options.h"
 #include "utils/display.h"
 #include "utils/log.hpp"
@@ -114,6 +116,7 @@ void dx_cleanup()
 	RendererTextureSurface = nullptr;
 #ifndef USE_SDL1
 	texture = nullptr;
+	FreeVirtualGamepadTextures();
 	if (*sgOptions.Graphics.upscale)
 		SDL_DestroyRenderer(renderer);
 #endif

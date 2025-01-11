@@ -13,6 +13,7 @@
 #include "controls/touch/gamepad.h"
 #include "engine/demomode.h"
 #include "options.h"
+#include "utils/is_of.hpp"
 #include "utils/log.hpp"
 
 namespace devilution {
@@ -92,7 +93,7 @@ bool IsPressedForMovement(ControllerButton button)
 	return !PadMenuNavigatorActive
 	    && IsControllerButtonPressed(button)
 	    && !IsMovementOverriddenByPadmapper(button)
-	    && !(spselflag && TriggersQuickSpellAction(button));
+	    && !(SpellSelectFlag && TriggersQuickSpellAction(button));
 }
 
 void SetSimulatingMouseWithPadmapper(bool value)

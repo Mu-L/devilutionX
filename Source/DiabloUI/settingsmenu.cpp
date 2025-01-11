@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include <function_ref.hpp>
 
@@ -11,9 +12,11 @@
 #include "controls/controller_motion.h"
 #include "controls/plrctrls.h"
 #include "controls/remap_keyboard.h"
+#include "engine/assets.hpp"
 #include "engine/render/text_render.hpp"
 #include "hwcursor.hpp"
 #include "options.h"
+#include "utils/is_of.hpp"
 #include "utils/language.h"
 #include "utils/utf8.hpp"
 

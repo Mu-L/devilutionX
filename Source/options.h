@@ -6,16 +6,18 @@
 #include <forward_list>
 #include <optional>
 #include <string_view>
-#include <unordered_map>
 
 #include <SDL_version.h>
+#include <ankerl/unordered_dense.h>
 
 #include "controls/controller.h"
 #include "controls/controller_buttons.h"
 #include "controls/game_controls.h"
 #include "engine/sound_defs.hpp"
 #include "pack.h"
+#include "quick_messages.hpp"
 #include "utils/enum_traits.h"
+#include "utils/string_view_hash.hpp"
 
 namespace devilution {
 
@@ -411,12 +413,18 @@ protected:
 	const char *description;
 };
 
-struct StartUpOptions : OptionCategoryBase {
-	StartUpOptions();
+struct GameModeOptions : OptionCategoryBase {
+	GameModeOptions();
 	std::vector<OptionEntryBase *> GetEntries() override;
 
 	OptionEntryEnum<StartUpGameMode> gameMode;
 	OptionEntryBoolean shareware;
+};
+
+struct StartUpOptions : OptionCategoryBase {
+	StartUpOptions();
+	std::vector<OptionEntryBase *> GetEntries() override;
+
 	/** @brief Play game intro video on diablo startup. */
 	OptionEntryEnum<StartUpIntro> diabloIntro;
 	/** @brief Play game intro video on hellfire startup. */
@@ -528,6 +536,8 @@ struct GameplayOptions : OptionCategoryBase {
 	OptionEntryBoolean runInTown;
 	/** @brief Do not let the mouse leave the application window. */
 	OptionEntryBoolean grabInput;
+	/** @brief Pause the game when focus is lost. */
+	OptionEntryBoolean pauseOnFocusLoss;
 	/** @brief Enable the Theo quest. */
 	OptionEntryBoolean theoQuest;
 	/** @brief Enable the cow quest. */
@@ -596,6 +606,13 @@ struct GameplayOptions : OptionCategoryBase {
 	OptionEntryInt<int> numFullRejuPotionPickup;
 	/** @brief Enable floating numbers. */
 	OptionEntryEnum<FloatingNumbers> enableFloatingNumbers;
+
+	/**
+	 * @brief If loading takes less than this value, skips displaying the loading screen.
+	 *
+	 * Advanced option, not displayed in the UI.
+	 */
+	OptionEntryInt<int> skipLoadingScreenThresholdMs;
 };
 
 struct ControllerOptions : OptionCategoryBase {
@@ -631,7 +648,7 @@ struct ChatOptions : OptionCategoryBase {
 	std::vector<OptionEntryBase *> GetEntries() override;
 
 	/** @brief Quick chat messages. */
-	std::vector<std::string> szHotKeyMsgs[QUICK_MESSAGE_OPTIONS];
+	std::vector<std::string> szHotKeyMsgs[QuickMessages.size()];
 };
 
 struct LanguageOptions : OptionCategoryBase {
@@ -706,9 +723,9 @@ struct KeymapperOptions : OptionCategoryBase {
 
 private:
 	std::forward_list<Action> actions;
-	std::unordered_map<uint32_t, std::reference_wrapper<Action>> keyIDToAction;
-	std::unordered_map<uint32_t, std::string> keyIDToKeyName;
-	std::unordered_map<std::string, uint32_t> keyNameToKeyID;
+	ankerl::unordered_dense::segmented_map<uint32_t, std::reference_wrapper<Action>> keyIDToAction;
+	ankerl::unordered_dense::segmented_map<uint32_t, std::string> keyIDToKeyName;
+	ankerl::unordered_dense::segmented_map<std::string, uint32_t, StringViewHash, StringViewEquals> keyNameToKeyID;
 };
 
 /** The Padmapper maps gamepad buttons to actions. */
@@ -780,14 +797,32 @@ private:
 	std::forward_list<Action> actions;
 	std::array<const Action *, enum_size<ControllerButton>::value> buttonToReleaseAction;
 	std::array<std::string, enum_size<ControllerButton>::value> buttonToButtonName;
-	std::unordered_map<std::string, ControllerButton> buttonNameToButton;
+	ankerl::unordered_dense::segmented_map<std::string, ControllerButton, StringViewHash, StringViewEquals> buttonNameToButton;
 	bool committed = false;
 
 	const Action *FindAction(ControllerButton button) const;
 	bool CanDeferToMovementHandler(const Action &action) const;
 };
 
+struct ModOptions : OptionCategoryBase {
+	ModOptions();
+	std::vector<std::string_view> GetActiveModList();
+	std::vector<std::string_view> GetModList();
+	std::vector<OptionEntryBase *> GetEntries() override;
+
+private:
+	struct ModEntry {
+		ModEntry(std::string_view name);
+		std::string name;
+		OptionEntryBoolean enabled;
+	};
+
+	std::vector<ModEntry> &GetModEntries();
+	std::optional<std::vector<ModEntry>> modEntries;
+};
+
 struct Options {
+	GameModeOptions GameMode;
 	StartUpOptions StartUp;
 	DiabloOptions Diablo;
 	HellfireOptions Hellfire;
@@ -800,11 +835,13 @@ struct Options {
 	LanguageOptions Language;
 	KeymapperOptions Keymapper;
 	PadmapperOptions Padmapper;
+	ModOptions Mods;
 
 	[[nodiscard]] std::vector<OptionCategoryBase *> GetCategories()
 	{
 		return {
 			&Language,
+			&GameMode,
 			&StartUp,
 			&Graphics,
 			&Audio,
@@ -816,6 +853,7 @@ struct Options {
 			&Chat,
 			&Keymapper,
 			&Padmapper,
+			&Mods,
 		};
 	}
 };

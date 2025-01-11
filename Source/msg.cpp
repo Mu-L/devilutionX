@@ -8,8 +8,8 @@
 #include <cstdint>
 #include <list>
 #include <memory>
-#include <unordered_map>
 
+#include <ankerl/unordered_dense.h>
 #include <fmt/format.h>
 
 #if !defined(UNPACKED_MPQS) || !defined(UNPACKED_SAVES) || !defined(NONET)
@@ -42,6 +42,7 @@
 #include "sync.h"
 #include "tmsg.h"
 #include "towners.h"
+#include "utils/is_of.hpp"
 #include "utils/language.h"
 #include "utils/str_cat.hpp"
 #include "utils/utf8.hpp"
@@ -218,8 +219,8 @@ struct DSpawnedMonster {
 
 struct DLevel {
 	TCmdPItem item[MAXITEMS];
-	std::unordered_map<WorldTilePosition, DObjectStr> object;
-	std::unordered_map<size_t, DSpawnedMonster> spawnedMonsters;
+	ankerl::unordered_dense::map<WorldTilePosition, DObjectStr> object;
+	ankerl::unordered_dense::map<size_t, DSpawnedMonster> spawnedMonsters;
 	DMonsterStr monster[MaxMonsters];
 };
 
@@ -260,14 +261,14 @@ constexpr size_t MAX_CHUNKS = MAX_MULTIPLAYERLEVELS + 4;
 uint32_t sgdwOwnerWait;
 uint32_t sgdwRecvOffset;
 int sgnCurrMegaPlayer;
-std::unordered_map<uint8_t, DLevel> DeltaLevels;
+ankerl::unordered_dense::map<uint8_t, DLevel> DeltaLevels;
 uint8_t sbLastCmd;
 /**
  * @brief buffer used to receive level deltas, size is the worst expected case assuming every object on a level was touched
  */
 std::byte sgRecvBuf[1U + sizeof(DLevel::item) + sizeof(uint8_t) + (sizeof(WorldTilePosition) + sizeof(_cmd_id)) * MAXOBJECTS + sizeof(DLevel::monster)];
 _cmd_id sgbRecvCmd;
-std::unordered_map<uint8_t, LocalLevel> LocalLevels;
+ankerl::unordered_dense::map<uint8_t, LocalLevel> LocalLevels;
 DJunk sgJunk;
 uint8_t sgbDeltaChunks;
 std::list<TMegaPkt> MegaPktList;
@@ -504,7 +505,7 @@ size_t DeltaImportItem(const std::byte *src, TCmdPItem *dst)
 	return size;
 }
 
-std::byte *DeltaExportObject(std::byte *dst, const std::unordered_map<WorldTilePosition, DObjectStr> &src)
+std::byte *DeltaExportObject(std::byte *dst, const ankerl::unordered_dense::map<WorldTilePosition, DObjectStr> &src)
 {
 	*dst++ = static_cast<std::byte>(src.size());
 	for (const auto &[position, obj] : src) {
@@ -516,7 +517,7 @@ std::byte *DeltaExportObject(std::byte *dst, const std::unordered_map<WorldTileP
 	return dst;
 }
 
-const std::byte *DeltaImportObjects(const std::byte *src, std::unordered_map<WorldTilePosition, DObjectStr> &dst)
+const std::byte *DeltaImportObjects(const std::byte *src, ankerl::unordered_dense::map<WorldTilePosition, DObjectStr> &dst)
 {
 	dst.clear();
 
@@ -562,7 +563,7 @@ size_t DeltaImportMonster(const std::byte *src, DMonsterStr *dst)
 	return size;
 }
 
-std::byte *DeltaExportSpawnedMonsters(std::byte *dst, const std::unordered_map<size_t, DSpawnedMonster> &spawnedMonsters)
+std::byte *DeltaExportSpawnedMonsters(std::byte *dst, const ankerl::unordered_dense::map<size_t, DSpawnedMonster> &spawnedMonsters)
 {
 	auto &size = *reinterpret_cast<uint16_t *>(dst);
 	size = static_cast<uint16_t>(spawnedMonsters.size());
@@ -580,7 +581,7 @@ std::byte *DeltaExportSpawnedMonsters(std::byte *dst, const std::unordered_map<s
 	return dst;
 }
 
-const std::byte *DeltaImportSpawnedMonsters(const std::byte *src, std::unordered_map<size_t, DSpawnedMonster> &spawnedMonsters)
+const std::byte *DeltaImportSpawnedMonsters(const std::byte *src, ankerl::unordered_dense::map<size_t, DSpawnedMonster> &spawnedMonsters)
 {
 	uint16_t size = *reinterpret_cast<const uint16_t *>(src);
 	src += sizeof(uint16_t);
@@ -683,7 +684,7 @@ void DeltaImportData(_cmd_id cmd, uint32_t recvOffset)
 		src += DeltaImportMonster(src, deltaLevel.monster);
 		src = DeltaImportSpawnedMonsters(src, deltaLevel.spawnedMonsters);
 	} else {
-		app_fatal(StrCat("Unkown network message type: ", cmd));
+		app_fatal(StrCat("Unknown network message type: ", cmd));
 	}
 
 	sgbDeltaChunks++;
@@ -750,7 +751,7 @@ void DeltaLeaveSync(uint8_t bLevel)
 	if (!gbIsMultiplayer)
 		return;
 	if (leveltype == DTYPE_TOWN) {
-		DungeonSeeds[0] = AdvanceRndSeed();
+		DungeonSeeds[0] = GenerateSeed();
 		return;
 	}
 
@@ -758,7 +759,7 @@ void DeltaLeaveSync(uint8_t bLevel)
 
 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
 		const unsigned ma = ActiveMonsters[i];
-		auto &monster = Monsters[ma];
+		Monster &monster = Monsters[ma];
 		if (monster.hitPoints == 0)
 			continue;
 		DMonsterStr &delta = deltaLevel.monster[ma];
@@ -1027,6 +1028,9 @@ bool IsGItemValid(const TCmdGItem &message)
 
 bool IsPItemValid(const TCmdPItem &message, const Player &player)
 {
+	if (!gbIsMultiplayer)
+		return true;
+
 	const Point position { message.x, message.y };
 
 	if (!InDungeonBounds(position))
@@ -1656,7 +1660,7 @@ size_t OnKnockback(const TCmd *pCmd, Player &player)
 
 	if (gbBufferMsgs != 1 && player.isOnActiveLevel() && monsterIdx < MaxMonsters) {
 		Monster &monster = Monsters[monsterIdx];
-		M_GetKnockback(monster);
+		M_GetKnockback(monster, player.position.tile);
 		M_StartHit(monster, player, 0);
 	}
 
@@ -1818,7 +1822,7 @@ size_t OnMonstDamage(const TCmd *pCmd, Player &player)
 	if (gbBufferMsgs != 1) {
 		if (&player != MyPlayer) {
 			if (player.isOnActiveLevel() && monsterIdx < MaxMonsters) {
-				auto &monster = Monsters[monsterIdx];
+				Monster &monster = Monsters[monsterIdx];
 				monster.tag(player);
 				if (monster.hitPoints > 0) {
 					monster.hitPoints -= SDL_SwapLE32(message.dwDam);
@@ -2425,6 +2429,7 @@ void PrepareEarForNetwork(const Item &item, TEar &ear)
 void RecreateItem(const Player &player, const TItem &messageItem, Item &item)
 {
 	const uint32_t dwBuff = SDL_SwapLE32(messageItem.dwBuff);
+	item.dwBuff = dwBuff;
 	RecreateItem(player, item,
 	    static_cast<_item_indexes>(SDL_SwapLE16(messageItem.wIndx)), SDL_SwapLE16(messageItem.wCI),
 	    SDL_SwapLE32(messageItem.dwSeed), SDL_SwapLE16(messageItem.wValue), (dwBuff & CF_HELLFIRE) != 0);
@@ -2438,7 +2443,6 @@ void RecreateItem(const Player &player, const TItem &messageItem, Item &item)
 		item._iPLToHit = ClampToHit(item, static_cast<uint8_t>(SDL_SwapLE16(messageItem.wToHit)));
 		item._iMaxDam = ClampMaxDam(item, static_cast<uint8_t>(SDL_SwapLE16(messageItem.wMaxDam)));
 	}
-	item.dwBuff = dwBuff;
 }
 
 void ClearLastSentPlayerCmd()
@@ -2700,7 +2704,7 @@ void DeltaLoadLevel()
 			if (deltaLevel.monster[i].position.x == 0xFF)
 				continue;
 
-			auto &monster = Monsters[i];
+			Monster &monster = Monsters[i];
 			M_ClearSquares(monster);
 			{
 				const WorldTilePosition position = deltaLevel.monster[i].position;

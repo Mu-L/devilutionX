@@ -6,14 +6,12 @@
 #pragma once
 
 #include <cstdint>
-#include <limits>
 #include <optional>
 
-#include <SDL.h>
 #include <function_ref.hpp>
 
-#include "engine/direction.hpp"
 #include "engine/point.hpp"
+#include "utils/attributes.h"
 
 namespace devilution {
 
@@ -48,7 +46,7 @@ int FindPath(tl::function_ref<bool(Point)> posOk, Point startPosition, Point des
  *
  * @return true if step is allowed
  */
-bool path_solid_pieces(Point startPosition, Point destinationPosition);
+bool CanStep(Point startPosition, Point destinationPosition);
 
 /** For iterating over the 8 possible movement directions */
 const Displacement PathDirs[8] = {

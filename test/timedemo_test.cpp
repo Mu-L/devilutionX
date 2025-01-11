@@ -2,8 +2,11 @@
 #include <gtest/gtest.h>
 #include <iostream>
 
-#include "diablo.h"
+#include "engine/assets.hpp"
 #include "engine/demomode.h"
+#include "game_mode.hpp"
+#include "headless_mode.hpp"
+#include "init.h"
 #include "lua/lua.hpp"
 #include "monstdat.h"
 #include "options.h"
@@ -23,15 +26,27 @@ bool Dummy_GetHeroInfo(_uiheroinfo *pInfo)
 
 void RunTimedemo(std::string timedemoFolderName)
 {
-	std::string unitTestFolderCompletePath = paths::BasePath() + "/test/fixtures/timedemo/" + timedemoFolderName;
-	paths::SetPrefPath(unitTestFolderCompletePath);
-	paths::SetConfigPath(unitTestFolderCompletePath);
+	if (SDL_Init(
+#ifdef USE_SDL1
+	        0
+#else
+	        SDL_INIT_EVENTS
+#endif
+	        )
+	    <= -1) {
+		ErrSdl();
+	}
+
 	LoadCoreArchives();
 	LoadGameArchives();
 
 	// The tests need spawn.mpq or diabdat.mpq
 	// Please provide them so that the tests can run successfully
 	ASSERT_TRUE(HaveSpawn() || HaveDiabdat());
+
+	std::string unitTestFolderCompletePath = paths::BasePath() + "test/fixtures/timedemo/" + timedemoFolderName;
+	paths::SetPrefPath(unitTestFolderCompletePath);
+	paths::SetConfigPath(unitTestFolderCompletePath);
 
 	InitKeymapActions();
 	LoadOptions();
@@ -57,6 +72,7 @@ void RunTimedemo(std::string timedemoFolderName)
 	LoadMissileData();
 	LoadMonsterData();
 	LoadItemData();
+	LoadObjectData();
 	pfile_ui_set_hero_infos(Dummy_GetHeroInfo);
 	gbLoadGame = true;
 
@@ -71,6 +87,7 @@ void RunTimedemo(std::string timedemoFolderName)
 	ASSERT_FALSE(gbRunGame);
 	gbRunGame = false;
 	init_cleanup();
+	SDL_Quit();
 }
 
 } // namespace

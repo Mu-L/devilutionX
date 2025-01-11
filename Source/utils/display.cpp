@@ -28,6 +28,7 @@
 #include "controls/touch/gamepad.h"
 #include "engine/backbuffer_state.hpp"
 #include "engine/dx.h"
+#include "headless_mode.hpp"
 #include "options.h"
 #include "utils/log.hpp"
 #include "utils/sdl_geometry.h"
@@ -110,12 +111,10 @@ void FreeRenderer()
 {
 #if defined(_WIN32) && !defined(NXDK)
 	bool wasD3D9 = false;
-	bool wasD3D11 = false;
 	if (renderer != nullptr) {
 		SDL_RendererInfo previousRendererInfo;
 		SDL_GetRendererInfo(renderer, &previousRendererInfo);
 		wasD3D9 = (std::string_view(previousRendererInfo.name) == "direct3d");
-		wasD3D11 = (std::string_view(previousRendererInfo.name) == "direct3d11");
 	}
 #endif
 
@@ -126,8 +125,7 @@ void FreeRenderer()
 
 #if defined(_WIN32) && !defined(NXDK)
 	// On Windows 11 the directx9 VSYNC timer doesn't get recreated properly, see https://github.com/libsdl-org/SDL/issues/5099
-	// Furthermore, the direct3d11 driver "poisons" the window so it can't be used by another renderer
-	if ((wasD3D9 && *sgOptions.Graphics.upscale && *sgOptions.Graphics.vSync) || (wasD3D11 && !*sgOptions.Graphics.upscale)) {
+	if (wasD3D9 && *sgOptions.Graphics.upscale && *sgOptions.Graphics.vSync) {
 		std::string title = SDL_GetWindowTitle(ghMainWnd);
 		Uint32 flags = SDL_GetWindowFlags(ghMainWnd);
 		Rectangle dimensions;
@@ -236,9 +234,12 @@ void SetVideoMode(int width, int height, int bpp, uint32_t flags)
 	if (ghMainWnd == nullptr) {
 		ErrSdl();
 	}
-	const SDL_VideoInfo &current = *SDL_GetVideoInfo();
-	Log("Video mode is now {}x{} bpp={} flags=0x{:08X}",
-	    current.current_w, current.current_h, current.vfmt->BitsPerPixel, SDL_GetVideoSurface()->flags);
+	const SDL_Surface *surface = SDL_GetVideoSurface();
+	if (surface == nullptr) {
+		ErrSdl();
+	}
+	Log("Video surface is now {}x{} bpp={} flags=0x{:08X}",
+	    surface->w, surface->h, surface->format->BitsPerPixel, surface->flags);
 }
 
 void SetVideoModeToPrimary(bool fullscreen, int width, int height)
@@ -410,9 +411,11 @@ void ReinitializeRenderer()
 		return;
 
 #ifdef USE_SDL1
-	const SDL_VideoInfo &current = *SDL_GetVideoInfo();
-	Size windowSize = { current.current_w, current.current_h };
-	AdjustToScreenGeometry(windowSize);
+	const SDL_Surface *surface = SDL_GetVideoSurface();
+	if (surface == nullptr) {
+		ErrSdl();
+	}
+	AdjustToScreenGeometry(Size(surface->w, surface->h));
 #else
 	if (texture)
 		texture.reset();

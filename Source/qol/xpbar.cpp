@@ -15,6 +15,7 @@
 #include "engine/load_clx.hpp"
 #include "engine/point.hpp"
 #include "engine/render/clx_render.hpp"
+#include "engine/render/primitive_render.hpp"
 #include "options.h"
 #include "playerdat.hpp"
 #include "utils/format_int.hpp"
@@ -65,7 +66,7 @@ void FreeXPBar()
 
 void DrawXPBar(const Surface &out)
 {
-	if (!*sgOptions.Gameplay.experienceBar || talkflag)
+	if (!*sgOptions.Gameplay.experienceBar || ChatFlag)
 		return;
 
 	const Player &player = *MyPlayer;
@@ -122,24 +123,24 @@ bool CheckXPBarInfo()
 
 	const uint8_t charLevel = player.getCharacterLevel();
 
-	AddPanelString(fmt::format(fmt::runtime(_("Level {:d}")), charLevel));
+	AddInfoBoxString(fmt::format(fmt::runtime(_("Level {:d}")), charLevel));
 
 	if (player.isMaxCharacterLevel()) {
 		// Show a maximum level indicator for max level players.
 		InfoColor = UiFlags::ColorWhitegold;
 
-		AddPanelString(fmt::format(fmt::runtime(_("Experience: {:s}")), FormatInteger(player._pExperience)));
-		AddPanelString(_("Maximum Level"));
+		AddInfoBoxString(fmt::format(fmt::runtime(_("Experience: {:s}")), FormatInteger(player._pExperience)));
+		AddInfoBoxString(_("Maximum Level"));
 
 		return true;
 	}
 
 	InfoColor = UiFlags::ColorWhite;
 
-	AddPanelString(fmt::format(fmt::runtime(_("Experience: {:s}")), FormatInteger(player._pExperience)));
+	AddInfoBoxString(fmt::format(fmt::runtime(_("Experience: {:s}")), FormatInteger(player._pExperience)));
 	uint32_t nextExperienceThreshold = player.getNextExperienceThreshold();
-	AddPanelString(fmt::format(fmt::runtime(_("Next Level: {:s}")), FormatInteger(nextExperienceThreshold)));
-	AddPanelString(fmt::format(fmt::runtime(_("{:s} to Level {:d}")), FormatInteger(nextExperienceThreshold - player._pExperience), charLevel + 1));
+	AddInfoBoxString(fmt::format(fmt::runtime(_("Next Level: {:s}")), FormatInteger(nextExperienceThreshold)));
+	AddInfoBoxString(fmt::format(fmt::runtime(_("{:s} to Level {:d}")), FormatInteger(nextExperienceThreshold - player._pExperience), charLevel + 1));
 
 	return true;
 }

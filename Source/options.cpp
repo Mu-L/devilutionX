@@ -5,31 +5,39 @@
  */
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
+#include <optional>
+#include <span>
 
+#include <expected.hpp>
 #include <fmt/format.h>
-
-#define SI_NO_CONVERSION
-#include <SimpleIni.h>
 
 #include "control.h"
 #include "controls/controller.h"
 #include "controls/game_controls.h"
 #include "controls/plrctrls.h"
 #include "discord/discord.h"
+#include "engine/assets.hpp"
 #include "engine/demomode.h"
 #include "engine/sound_defs.hpp"
+#include "game_mode.hpp"
 #include "hwcursor.hpp"
+#include "lua/lua.hpp"
 #include "options.h"
 #include "platform/locale.hpp"
 #include "qol/monhealthbar.h"
 #include "qol/xpbar.h"
+#include "quick_messages.hpp"
 #include "utils/algorithm/container.hpp"
 #include "utils/display.h"
 #include "utils/file_util.h"
+#include "utils/ini.hpp"
+#include "utils/is_of.hpp"
 #include "utils/language.h"
 #include "utils/log.hpp"
+#include "utils/logged_fstream.hpp"
 #include "utils/paths.h"
 #include "utils/str_cat.hpp"
 #include "utils/str_split.hpp"
@@ -58,11 +66,7 @@ namespace devilution {
 
 namespace {
 
-#if defined(__ANDROID__) || defined(__APPLE__)
-constexpr OptionEntryFlags OnlyIfNoImplicitRenderer = OptionEntryFlags::Invisible;
-#else
-constexpr OptionEntryFlags OnlyIfNoImplicitRenderer = OptionEntryFlags::None;
-#endif
+std::optional<Ini> ini;
 
 #if defined(__ANDROID__) || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1)
 constexpr OptionEntryFlags OnlyIfSupportsWindowed = OptionEntryFlags::Invisible;
@@ -85,167 +89,45 @@ std::string GetIniPath()
 	return path;
 }
 
-CSimpleIni &GetIni()
+void LoadIni()
 {
-	static CSimpleIni ini;
-	static bool isIniLoaded = false;
-	if (!isIniLoaded) {
-		auto path = GetIniPath();
-		FILE *file = OpenFile(path.c_str(), "rb");
-		ini.SetSpaces(false);
-		ini.SetMultiKey();
-		if (file != nullptr) {
-			ini.LoadFile(file);
-			std::fclose(file);
+	std::vector<char> buffer;
+	auto path = GetIniPath();
+	FILE *file = OpenFile(path.c_str(), "rb");
+	if (file != nullptr) {
+		uintmax_t size;
+		if (GetFileSize(path.c_str(), &size)) {
+			buffer.resize(size);
+			if (std::fread(buffer.data(), size, 1, file) != 1) {
+				const char *errorMessage = std::strerror(errno);
+				if (errorMessage == nullptr) errorMessage = "";
+				LogError(LogCategory::System, "std::fread: failed with \"{}\"", errorMessage);
+				buffer.clear();
+			}
 		}
-		isIniLoaded = true;
+		std::fclose(file);
 	}
-	return ini;
-}
-
-bool IniChanged = false;
-
-/**
- * @brief Checks if a ini entry is changed by comparing value before and after
- */
-class IniChangedChecker {
-public:
-	IniChangedChecker(const char *sectionName, const char *keyName)
-	{
-		this->sectionName_ = sectionName;
-		this->keyName_ = keyName;
-		oldValue_ = GetValue();
-		if (!oldValue_) {
-			// No entry found in original ini => new entry => changed
-			IniChanged = true;
-		}
-	}
-	~IniChangedChecker()
-	{
-		auto newValue = GetValue();
-		if (oldValue_ != newValue)
-			IniChanged = true;
-	}
-
-private:
-	std::optional<std::string> GetValue()
-	{
-		std::list<CSimpleIni::Entry> values;
-		if (!GetIni().GetAllValues(sectionName_, keyName_, values))
-			return std::nullopt;
-		std::string ret;
-		for (auto &entry : values) {
-			if (entry.pItem != nullptr)
-				ret.append(entry.pItem);
-			ret.append("\n");
-		}
-		return ret;
-	}
-
-	std::optional<std::string> oldValue_;
-	const char *sectionName_;
-	const char *keyName_;
-};
-
-int GetIniInt(const char *keyname, const char *valuename, int defaultValue)
-{
-	return GetIni().GetLongValue(keyname, valuename, defaultValue);
-}
-
-bool GetIniBool(const char *sectionName, const char *keyName, bool defaultValue)
-{
-	return GetIni().GetBoolValue(sectionName, keyName, defaultValue);
-}
-
-float GetIniFloat(const char *sectionName, const char *keyName, float defaultValue)
-{
-	return (float)GetIni().GetDoubleValue(sectionName, keyName, defaultValue);
-}
-
-bool GetIniValue(std::string_view sectionName, std::string_view keyName, char *string, size_t stringSize, const char *defaultString = "")
-{
-	std::string sectionNameStr { sectionName };
-	std::string keyNameStr { keyName };
-	const char *value = GetIni().GetValue(sectionNameStr.c_str(), keyNameStr.c_str());
-	if (value == nullptr) {
-		CopyUtf8(string, defaultString, stringSize);
-		return false;
-	}
-	CopyUtf8(string, value, stringSize);
-	return true;
-}
-
-bool GetIniStringVector(const char *sectionName, const char *keyName, std::vector<std::string> &stringValues)
-{
-	std::list<CSimpleIni::Entry> values;
-	if (!GetIni().GetAllValues(sectionName, keyName, values)) {
-		return false;
-	}
-	for (auto &entry : values) {
-		stringValues.emplace_back(entry.pItem);
-	}
-	return true;
-}
-
-void SetIniValue(const char *keyname, const char *valuename, int value)
-{
-	IniChangedChecker changedChecker(keyname, valuename);
-	GetIni().SetLongValue(keyname, valuename, value, nullptr, false, true);
-}
-
-void SetIniValue(const char *keyname, const char *valuename, bool value)
-{
-	IniChangedChecker changedChecker(keyname, valuename);
-	GetIni().SetLongValue(keyname, valuename, value ? 1 : 0, nullptr, false, true);
-}
-
-void SetIniValue(const char *keyname, const char *valuename, float value)
-{
-	IniChangedChecker changedChecker(keyname, valuename);
-	GetIni().SetDoubleValue(keyname, valuename, value, nullptr, true);
-}
-
-void SetIniValue(const char *sectionName, const char *keyName, const char *value)
-{
-	IniChangedChecker changedChecker(sectionName, keyName);
-	auto &ini = GetIni();
-	ini.SetValue(sectionName, keyName, value, nullptr, true);
-}
-
-void SetIniValue(std::string_view sectionName, std::string_view keyName, std::string_view value)
-{
-	std::string sectionNameStr { sectionName };
-	std::string keyNameStr { keyName };
-	std::string valueStr { value };
-	SetIniValue(sectionNameStr.c_str(), keyNameStr.c_str(), valueStr.c_str());
-}
-
-void SetIniValue(const char *keyname, const char *valuename, const std::vector<std::string> &stringValues)
-{
-	IniChangedChecker changedChecker(keyname, valuename);
-	bool firstSet = true;
-	for (auto &value : stringValues) {
-		GetIni().SetValue(keyname, valuename, value.c_str(), nullptr, firstSet);
-		firstSet = false;
-	}
-	if (firstSet)
-		GetIni().SetValue(keyname, valuename, "", nullptr, true);
+	tl::expected<Ini, std::string> result = Ini::parse(std::string_view(buffer.data(), buffer.size()));
+	if (!result.has_value()) app_fatal(result.error());
+	ini.emplace(std::move(result).value());
 }
 
 void SaveIni()
 {
-	if (!IniChanged)
-		return;
+	if (!ini.has_value()) return;
+	if (!ini->changed()) return;
 	RecursivelyCreateDir(paths::ConfigPath().c_str());
 	const std::string iniPath = GetIniPath();
-	FILE *file = OpenFile(iniPath.c_str(), "wb");
-	if (file != nullptr) {
-		GetIni().SaveFile(file, true);
-		std::fclose(file);
-	} else {
-		LogError("Failed to write ini file to {}: {}", iniPath, std::strerror(errno));
+	LoggedFStream out;
+	if (!out.Open(iniPath.c_str(), "wb")) {
+		LogError("Failed to open ini file for writing at {}: {}", iniPath, std::strerror(errno));
+		return;
 	}
-	IniChanged = false;
+	const std::string newContents = ini->serialize();
+	if (out.Write(newContents.data(), newContents.size())) {
+		ini->markAsUnchanged();
+	}
+	out.Close();
 }
 
 #if SDL_VERSION_ATLEAST(2, 0, 0)
@@ -317,13 +199,13 @@ void OptionLanguageCodeChanged()
 
 void OptionGameModeChanged()
 {
-	gbIsHellfire = *sgOptions.StartUp.gameMode == StartUpGameMode::Hellfire;
+	gbIsHellfire = *sgOptions.GameMode.gameMode == StartUpGameMode::Hellfire;
 	discord_manager::UpdateMenu(true);
 }
 
 void OptionSharewareChanged()
 {
-	gbIsSpawn = *sgOptions.StartUp.shareware;
+	gbIsSpawn = *sgOptions.GameMode.shareware;
 }
 
 void OptionAudioChanged()
@@ -359,25 +241,32 @@ bool HardwareCursorSupported()
 
 void LoadOptions()
 {
+	LoadIni();
 	for (OptionCategoryBase *pCategory : sgOptions.GetCategories()) {
 		for (OptionEntryBase *pEntry : pCategory->GetEntries()) {
 			pEntry->LoadFromIni(pCategory->GetKey());
 		}
 	}
 
-	GetIniValue("Hellfire", "SItem", sgOptions.Hellfire.szItem, sizeof(sgOptions.Hellfire.szItem), "");
+	ini->getUtf8Buf("Hellfire", "SItem", sgOptions.Hellfire.szItem, sizeof(sgOptions.Hellfire.szItem));
+	ini->getUtf8Buf("Network", "Bind Address", "0.0.0.0", sgOptions.Network.szBindAddress, sizeof(sgOptions.Network.szBindAddress));
+	ini->getUtf8Buf("Network", "Previous Game ID", sgOptions.Network.szPreviousZTGame, sizeof(sgOptions.Network.szPreviousZTGame));
+	ini->getUtf8Buf("Network", "Previous Host", sgOptions.Network.szPreviousHost, sizeof(sgOptions.Network.szPreviousHost));
 
-	GetIniValue("Network", "Bind Address", sgOptions.Network.szBindAddress, sizeof(sgOptions.Network.szBindAddress), "0.0.0.0");
-	GetIniValue("Network", "Previous Game ID", sgOptions.Network.szPreviousZTGame, sizeof(sgOptions.Network.szPreviousZTGame), "");
-	GetIniValue("Network", "Previous Host", sgOptions.Network.szPreviousHost, sizeof(sgOptions.Network.szPreviousHost), "");
+	for (size_t i = 0; i < QuickMessages.size(); i++) {
+		std::span<const Ini::Value> values = ini->get("NetMsg", QuickMessages[i].key);
+		std::vector<std::string> &result = sgOptions.Chat.szHotKeyMsgs[i];
+		result.clear();
+		result.reserve(values.size());
+		for (const Ini::Value &value : values) {
+			result.emplace_back(value.value);
+		}
+	}
 
-	for (size_t i = 0; i < QUICK_MESSAGE_OPTIONS; i++)
-		GetIniStringVector("NetMsg", QuickMessages[i].key, sgOptions.Chat.szHotKeyMsgs[i]);
-
-	GetIniValue("Controller", "Mapping", sgOptions.Controller.szMapping, sizeof(sgOptions.Controller.szMapping), "");
-	sgOptions.Controller.fDeadzone = GetIniFloat("Controller", "deadzone", 0.07F);
+	ini->getUtf8Buf("Controller", "Mapping", sgOptions.Controller.szMapping, sizeof(sgOptions.Controller.szMapping));
+	sgOptions.Controller.fDeadzone = ini->getFloat("Controller", "deadzone", 0.07F);
 #ifdef __vita__
-	sgOptions.Controller.bRearTouch = GetIniBool("Controller", "Enable Rear Touchpad", true);
+	sgOptions.Controller.bRearTouch = ini->getBool("Controller", "Enable Rear Touchpad", true);
 #endif
 
 	if (demo::IsRunning())
@@ -395,19 +284,20 @@ void SaveOptions()
 		}
 	}
 
-	SetIniValue("Hellfire", "SItem", sgOptions.Hellfire.szItem);
+	ini->set("Hellfire", "SItem", sgOptions.Hellfire.szItem);
 
-	SetIniValue("Network", "Bind Address", sgOptions.Network.szBindAddress);
-	SetIniValue("Network", "Previous Game ID", sgOptions.Network.szPreviousZTGame);
-	SetIniValue("Network", "Previous Host", sgOptions.Network.szPreviousHost);
+	ini->set("Network", "Bind Address", sgOptions.Network.szBindAddress);
+	ini->set("Network", "Previous Game ID", sgOptions.Network.szPreviousZTGame);
+	ini->set("Network", "Previous Host", sgOptions.Network.szPreviousHost);
 
-	for (size_t i = 0; i < QUICK_MESSAGE_OPTIONS; i++)
-		SetIniValue("NetMsg", QuickMessages[i].key, sgOptions.Chat.szHotKeyMsgs[i]);
+	for (size_t i = 0; i < QuickMessages.size(); i++) {
+		ini->set("NetMsg", QuickMessages[i].key, sgOptions.Chat.szHotKeyMsgs[i]);
+	}
 
-	SetIniValue("Controller", "Mapping", sgOptions.Controller.szMapping);
-	SetIniValue("Controller", "deadzone", sgOptions.Controller.fDeadzone);
+	ini->set("Controller", "Mapping", sgOptions.Controller.szMapping);
+	ini->set("Controller", "deadzone", sgOptions.Controller.fDeadzone);
 #ifdef __vita__
-	SetIniValue("Controller", "Enable Rear Touchpad", sgOptions.Controller.bRearTouch);
+	ini->set("Controller", "Enable Rear Touchpad", sgOptions.Controller.bRearTouch);
 #endif
 
 	SaveIni();
@@ -437,11 +327,11 @@ void OptionEntryBase::NotifyValueChanged()
 
 void OptionEntryBoolean::LoadFromIni(std::string_view category)
 {
-	value = GetIniBool(category.data(), key.data(), defaultValue);
+	value = ini->getBool(category, key, defaultValue);
 }
 void OptionEntryBoolean::SaveToIni(std::string_view category) const
 {
-	SetIniValue(category.data(), key.data(), value);
+	ini->set(category, key, value);
 }
 void OptionEntryBoolean::SetValue(bool value)
 {
@@ -468,11 +358,11 @@ std::string_view OptionEntryListBase::GetValueDescription() const
 
 void OptionEntryEnumBase::LoadFromIni(std::string_view category)
 {
-	value = GetIniInt(category.data(), key.data(), defaultValue);
+	value = ini->getInt(category, key, defaultValue);
 }
 void OptionEntryEnumBase::SaveToIni(std::string_view category) const
 {
-	SetIniValue(category.data(), key.data(), value);
+	ini->set(category, key, value);
 }
 void OptionEntryEnumBase::SetValueInternal(int value)
 {
@@ -507,7 +397,7 @@ void OptionEntryEnumBase::SetActiveListIndex(size_t index)
 
 void OptionEntryIntBase::LoadFromIni(std::string_view category)
 {
-	value = GetIniInt(category.data(), key.data(), defaultValue);
+	value = ini->getInt(category, key, defaultValue);
 	if (c_find(entryValues, value) == entryValues.end()) {
 		entryValues.insert(c_lower_bound(entryValues, value), value);
 		entryNames.clear();
@@ -515,7 +405,7 @@ void OptionEntryIntBase::LoadFromIni(std::string_view category)
 }
 void OptionEntryIntBase::SaveToIni(std::string_view category) const
 {
-	SetIniValue(category.data(), key.data(), value);
+	ini->set(category, key, value);
 }
 void OptionEntryIntBase::SetValueInternal(int value)
 {
@@ -565,25 +455,40 @@ std::string_view OptionCategoryBase::GetDescription() const
 	return _(description);
 }
 
-StartUpOptions::StartUpOptions()
-    : OptionCategoryBase("StartUp", N_("Start Up"), N_("Start Up Settings"))
+GameModeOptions::GameModeOptions()
+    : OptionCategoryBase("GameMode", N_("Game Mode"), N_("Game Mode Settings"))
     , gameMode("Game", OptionEntryFlags::NeedHellfireMpq | OptionEntryFlags::RecreateUI, N_("Game Mode"), N_("Play Diablo or Hellfire."), StartUpGameMode::Ask,
           {
               { StartUpGameMode::Diablo, N_("Diablo") },
-              // Ask is missing, cause we want to hide it from UI-Settings.
+              // Ask is missing, because we want to hide it from UI-Settings.
               { StartUpGameMode::Hellfire, N_("Hellfire") },
           })
     , shareware("Shareware", OptionEntryFlags::NeedDiabloMpq | OptionEntryFlags::RecreateUI, N_("Restrict to Shareware"), N_("Makes the game compatible with the demo. Enables multiplayer with friends who don't own a full copy of Diablo."), false)
+
+{
+	gameMode.SetValueChangedCallback(OptionGameModeChanged);
+	shareware.SetValueChangedCallback(OptionSharewareChanged);
+}
+std::vector<OptionEntryBase *> GameModeOptions::GetEntries()
+{
+	return {
+		&gameMode,
+		&shareware,
+	};
+}
+
+StartUpOptions::StartUpOptions()
+    : OptionCategoryBase("StartUp", N_("Start Up"), N_("Start Up Settings"))
     , diabloIntro("Diablo Intro", OptionEntryFlags::OnlyDiablo, N_("Intro"), N_("Shown Intro cinematic."), StartUpIntro::Once,
           {
               { StartUpIntro::Off, N_("OFF") },
-              // Once is missing, cause we want to hide it from UI-Settings.
+              // Once is missing, because we want to hide it from UI-Settings.
               { StartUpIntro::On, N_("ON") },
           })
     , hellfireIntro("Hellfire Intro", OptionEntryFlags::OnlyHellfire, N_("Intro"), N_("Shown Intro cinematic."), StartUpIntro::Once,
           {
               { StartUpIntro::Off, N_("OFF") },
-              // Once is missing, cause we want to hide it from UI-Settings.
+              // Once is missing, because we want to hide it from UI-Settings.
               { StartUpIntro::On, N_("ON") },
           })
     , splash("Splash", OptionEntryFlags::None, N_("Splash"), N_("Shown splash screen."), StartUpSplash::LogoAndTitleDialog,
@@ -593,14 +498,10 @@ StartUpOptions::StartUpOptions()
               { StartUpSplash::None, N_("None") },
           })
 {
-	gameMode.SetValueChangedCallback(OptionGameModeChanged);
-	shareware.SetValueChangedCallback(OptionSharewareChanged);
 }
 std::vector<OptionEntryBase *> StartUpOptions::GetEntries()
 {
 	return {
-		&gameMode,
-		&shareware,
 		&diabloIntro,
 		&hellfireIntro,
 		&splash,
@@ -681,12 +582,12 @@ OptionEntryResolution::OptionEntryResolution()
 }
 void OptionEntryResolution::LoadFromIni(std::string_view category)
 {
-	size = { GetIniInt(category.data(), "Width", DEFAULT_WIDTH), GetIniInt(category.data(), "Height", DEFAULT_HEIGHT) };
+	size = { ini->getInt(category, "Width", DEFAULT_WIDTH), ini->getInt(category, "Height", DEFAULT_HEIGHT) };
 }
 void OptionEntryResolution::SaveToIni(std::string_view category) const
 {
-	SetIniValue(category.data(), "Width", size.width);
-	SetIniValue(category.data(), "Height", size.height);
+	ini->set(category, "Width", size.width);
+	ini->set(category, "Height", size.height);
 }
 
 void OptionEntryResolution::InvalidateList()
@@ -819,16 +720,16 @@ void OptionEntryResolution::SetActiveListIndex(size_t index)
 
 OptionEntryResampler::OptionEntryResampler()
     : OptionEntryListBase("Resampler", OptionEntryFlags::CantChangeInGame
-            // When there are exactly 2 options there is no submenu, so we need to recreate the UI
-            // to reflect the change in the "Resampling quality" setting visibility.
-            | (NumResamplers == 2 ? OptionEntryFlags::RecreateUI : OptionEntryFlags::None),
-        N_("Resampler"), N_("Audio resampler"))
+              // When there are exactly 2 options there is no submenu, so we need to recreate the UI
+              // to reflect the change in the "Resampling quality" setting visibility.
+              | (NumResamplers == 2 ? OptionEntryFlags::RecreateUI : OptionEntryFlags::None),
+          N_("Resampler"), N_("Audio resampler"))
 {
 }
 void OptionEntryResampler::LoadFromIni(std::string_view category)
 {
-	char resamplerStr[32];
-	if (GetIniValue(category, key, resamplerStr, sizeof(resamplerStr))) {
+	std::string_view resamplerStr = ini->getString(category, key);
+	if (!resamplerStr.empty()) {
 		std::optional<Resampler> resampler = ResamplerFromString(resamplerStr);
 		if (resampler) {
 			resampler_ = *resampler;
@@ -842,7 +743,7 @@ void OptionEntryResampler::LoadFromIni(std::string_view category)
 
 void OptionEntryResampler::SaveToIni(std::string_view category) const
 {
-	SetIniValue(category, key, ResamplerToString(resampler_));
+	ini->set(category, key, ResamplerToString(resampler_));
 }
 
 size_t OptionEntryResampler::GetListSize() const
@@ -884,15 +785,13 @@ OptionEntryAudioDevice::OptionEntryAudioDevice()
 }
 void OptionEntryAudioDevice::LoadFromIni(std::string_view category)
 {
-	char deviceStr[100];
-	GetIniValue(category, key, deviceStr, sizeof(deviceStr), "");
-	deviceName_ = deviceStr;
+	deviceName_ = ini->getString(category, key);
 }
 
 void OptionEntryAudioDevice::SaveToIni(std::string_view category) const
 {
 #if SDL_VERSION_ATLEAST(2, 0, 0)
-	SetIniValue(category, key, deviceName_);
+	ini->set(category, key, deviceName_);
 #endif
 }
 
@@ -953,7 +852,7 @@ GraphicsOptions::GraphicsOptions()
     , fitToScreen("Fit to Screen", OptionEntryFlags::CantChangeInGame | OptionEntryFlags::RecreateUI, N_("Fit to Screen"), N_("Automatically adjust the game window to your current desktop screen aspect ratio and resolution."), true)
 #endif
 #ifndef USE_SDL1
-    , upscale("Upscale", OnlyIfNoImplicitRenderer | OptionEntryFlags::CantChangeInGame | OptionEntryFlags::RecreateUI, N_("Upscale"), N_("Enables image scaling from the game resolution to your monitor resolution. Prevents changing the monitor resolution and allows window resizing."),
+    , upscale("Upscale", OptionEntryFlags::Invisible | OptionEntryFlags::CantChangeInGame | OptionEntryFlags::RecreateUI, N_("Upscale"), N_("Enables image scaling from the game resolution to your monitor resolution. Prevents changing the monitor resolution and allows window resizing."),
 #ifdef NXDK
           false
 #else
@@ -1000,7 +899,6 @@ GraphicsOptions::GraphicsOptions()
 	fitToScreen.SetValueChangedCallback(ResizeWindowAndUpdateResolutionOptions);
 #endif
 #ifndef USE_SDL1
-	upscale.SetValueChangedCallback(ResizeWindowAndUpdateResolutionOptions);
 	scaleQuality.SetValueChangedCallback(ReinitializeTexture);
 	integerScaling.SetValueChangedCallback(ReinitializeIntegerScale);
 	vSync.SetValueChangedCallback(ReinitializeRenderer);
@@ -1044,6 +942,7 @@ GameplayOptions::GameplayOptions()
     , tickRate("Speed", OptionEntryFlags::Invisible, "Speed", "Gameplay ticks per second.", 20)
     , runInTown("Run in Town", OptionEntryFlags::CantChangeInMultiPlayer, N_("Run in Town"), N_("Enable jogging/fast walking in town for Diablo and Hellfire. This option was introduced in the expansion."), false)
     , grabInput("Grab Input", OptionEntryFlags::None, N_("Grab Input"), N_("When enabled mouse is locked to the game window."), false)
+    , pauseOnFocusLoss("Pause Game When Window Loses Focus", OptionEntryFlags::None, N_("Pause Game When Window Loses Focus"), N_("When enabled, the game will pause when focus is lost."), true)
     , theoQuest("Theo Quest", OptionEntryFlags::CantChangeInGame | OptionEntryFlags::OnlyHellfire, N_("Theo Quest"), N_("Enable Little Girl quest."), false)
     , cowQuest("Cow Quest", OptionEntryFlags::CantChangeInGame | OptionEntryFlags::OnlyHellfire, N_("Cow Quest"), N_("Enable Jersey's quest. Lester the farmer is replaced by the Complete Nut."), false)
     , friendlyFire("Friendly Fire", OptionEntryFlags::CantChangeInMultiPlayer, N_("Friendly Fire"), N_("Allow arrow/spell damage between players in multiplayer even when the friendly mode is on."), true)
@@ -1083,6 +982,7 @@ GameplayOptions::GameplayOptions()
               { FloatingNumbers::Random, N_("Random Angles") },
               { FloatingNumbers::Vertical, N_("Vertical Only") },
           })
+    , skipLoadingScreenThresholdMs("Skip loading screen threshold, ms", OptionEntryFlags::Invisible, "", "", 0)
 {
 	grabInput.SetValueChangedCallback(OptionGrabInputChanged);
 	experienceBar.SetValueChangedCallback(OptionExperienceBarChanged);
@@ -1128,6 +1028,8 @@ std::vector<OptionEntryBase *> GameplayOptions::GetEntries()
 		&disableCripplingShrines,
 		&adriaRefillsMana,
 		&grabInput,
+		&pauseOnFocusLoss,
+		&skipLoadingScreenThresholdMs,
 	};
 }
 
@@ -1167,11 +1069,10 @@ OptionEntryLanguageCode::OptionEntryLanguageCode()
 }
 void OptionEntryLanguageCode::LoadFromIni(std::string_view category)
 {
-	if (GetIniValue(category, key, szCode, sizeof(szCode))) {
-		if (HasTranslation(szCode)) {
-			// User preferred language is available
-			return;
-		}
+	ini->getUtf8Buf(category, key, szCode, sizeof(szCode));
+	if (szCode[0] != '\0' && HasTranslation(szCode)) {
+		// User preferred language is available
+		return;
 	}
 
 	// Might be a first run or the user has attempted to load a translation that doesn't exist via manual ini edit. Try
@@ -1210,7 +1111,7 @@ void OptionEntryLanguageCode::LoadFromIni(std::string_view category)
 }
 void OptionEntryLanguageCode::SaveToIni(std::string_view category) const
 {
-	SetIniValue(category, key, szCode);
+	ini->set(category, key, szCode);
 }
 
 void OptionEntryLanguageCode::CheckLanguagesAreInitialized() const
@@ -1226,8 +1127,10 @@ void OptionEntryLanguageCode::CheckLanguagesAreInitialized() const
 	languages.emplace_back("el", "Ελληνικά");
 	languages.emplace_back("en", "English");
 	languages.emplace_back("es", "Español");
+	languages.emplace_back("et", "Eesti");
 	languages.emplace_back("fr", "Français");
 	languages.emplace_back("hr", "Hrvatski");
+	languages.emplace_back("hu", "Magyar");
 	languages.emplace_back("it", "Italiano");
 
 	if (HaveExtraFonts()) {
@@ -1240,6 +1143,7 @@ void OptionEntryLanguageCode::CheckLanguagesAreInitialized() const
 	languages.emplace_back("ro", "Română");
 	languages.emplace_back("ru", "Русский");
 	languages.emplace_back("sv", "Svenska");
+	languages.emplace_back("tr", "Türkçe");
 	languages.emplace_back("uk", "Українська");
 
 	if (HaveExtraFonts()) {
@@ -1393,22 +1297,22 @@ std::string_view KeymapperOptions::Action::GetName() const
 
 void KeymapperOptions::Action::LoadFromIni(std::string_view category)
 {
-	std::array<char, 64> result;
-	if (!GetIniValue(category.data(), key.data(), result.data(), result.size())) {
+	const std::span<const Ini::Value> iniValues = ini->get(category, key);
+	if (iniValues.empty()) {
 		SetValue(defaultKey);
 		return; // Use the default key if no key has been set.
 	}
 
-	std::string readKey = result.data();
-	if (readKey.empty()) {
+	const std::string_view iniValue = iniValues.back().value;
+	if (iniValue.empty()) {
 		SetValue(SDLK_UNKNOWN);
 		return;
 	}
 
-	auto keyIt = sgOptions.Keymapper.keyNameToKeyID.find(readKey);
+	auto keyIt = sgOptions.Keymapper.keyNameToKeyID.find(iniValue);
 	if (keyIt == sgOptions.Keymapper.keyNameToKeyID.end()) {
 		// Use the default key if the key is unknown.
-		Log("Keymapper: unknown key '{}'", readKey);
+		Log("Keymapper: unknown key '{}'", iniValue);
 		SetValue(defaultKey);
 		return;
 	}
@@ -1421,7 +1325,7 @@ void KeymapperOptions::Action::SaveToIni(std::string_view category) const
 {
 	if (boundKey == SDLK_UNKNOWN) {
 		// Just add an empty config entry if the action is unbound.
-		SetIniValue(category.data(), key.data(), "");
+		ini->set(category, key, std::string {});
 		return;
 	}
 	auto keyNameIt = sgOptions.Keymapper.keyIDToKeyName.find(boundKey);
@@ -1429,7 +1333,7 @@ void KeymapperOptions::Action::SaveToIni(std::string_view category) const
 		LogVerbose("Keymapper: no name found for key {} bound to {}", boundKey, key);
 		return;
 	}
-	SetIniValue(category.data(), key.data(), keyNameIt->second.c_str());
+	ini->set(category, key, keyNameIt->second);
 }
 
 std::string_view KeymapperOptions::Action::GetValueDescription() const
@@ -1496,7 +1400,7 @@ void KeymapperOptions::KeyPressed(uint32_t key) const
 
 	// Check that the action can be triggered and that the chat textbox is not
 	// open.
-	if (!action.actionPressed || (action.enable && !action.enable()) || talkflag)
+	if (!action.actionPressed || (action.enable && !action.enable()) || ChatFlag)
 		return;
 
 	action.actionPressed();
@@ -1515,7 +1419,7 @@ void KeymapperOptions::KeyReleased(SDL_Keycode key) const
 
 	// Check that the action can be triggered and that the chat or gold textbox is not
 	// open. If either of those textboxes are open, only return if the key can be used for entry into the box
-	if (!action.actionReleased || (action.enable && !action.enable()) || ((talkflag && IsTextEntryKey(key)) || (dropGoldFlag && IsNumberEntryKey(key))))
+	if (!action.actionReleased || (action.enable && !action.enable()) || ((ChatFlag && IsTextEntryKey(key)) || (DropGoldFlag && IsNumberEntryKey(key))))
 		return;
 
 	action.actionReleased();
@@ -1613,15 +1517,16 @@ std::string_view PadmapperOptions::Action::GetName() const
 
 void PadmapperOptions::Action::LoadFromIni(std::string_view category)
 {
-	std::array<char, 64> result;
-	if (!GetIniValue(category.data(), key.data(), result.data(), result.size())) {
+	const std::span<const Ini::Value> iniValues = ini->get(category, key);
+	if (iniValues.empty()) {
 		SetValue(defaultInput);
 		return; // Use the default button combo if no mapping has been set.
 	}
+	const std::string_view iniValue = iniValues.back().value;
 
 	std::string modName;
 	std::string buttonName;
-	auto parts = SplitByChar(result.data(), '+');
+	auto parts = SplitByChar(iniValue, '+');
 	auto it = parts.begin();
 	if (it == parts.end()) {
 		SetValue(ControllerButtonCombo {});
@@ -1662,7 +1567,7 @@ void PadmapperOptions::Action::SaveToIni(std::string_view category) const
 {
 	if (boundInput.button == ControllerButton_NONE) {
 		// Just add an empty config entry if the action is unbound.
-		SetIniValue(category.data(), key.data(), "");
+		ini->set(category, key, "");
 		return;
 	}
 	std::string inputName = sgOptions.Padmapper.buttonToButtonName[static_cast<size_t>(boundInput.button)];
@@ -1678,7 +1583,7 @@ void PadmapperOptions::Action::SaveToIni(std::string_view category) const
 		}
 		inputName = StrCat(modifierName, "+", inputName);
 	}
-	SetIniValue(category.data(), key.data(), inputName.data());
+	ini->set(category, key, inputName.data());
 }
 
 void PadmapperOptions::Action::UpdateValueDescription() const
@@ -1870,7 +1775,7 @@ bool PadmapperOptions::CanDeferToMovementHandler(const Action &action) const
 	if (action.boundInput.modifier != ControllerButton_NONE)
 		return false;
 
-	if (spselflag) {
+	if (SpellSelectFlag) {
 		const std::string_view prefix { "QuickSpell" };
 		const std::string_view key { action.key };
 		if (key.size() >= prefix.size()) {
@@ -1885,6 +1790,67 @@ bool PadmapperOptions::CanDeferToMovementHandler(const Action &action) const
 	    ControllerButton_BUTTON_DPAD_DOWN,
 	    ControllerButton_BUTTON_DPAD_LEFT,
 	    ControllerButton_BUTTON_DPAD_RIGHT);
+}
+
+ModOptions::ModOptions()
+    : OptionCategoryBase("Mods", N_("Mods"), N_("Mod Settings"))
+{
+}
+
+std::vector<std::string_view> ModOptions::GetActiveModList()
+{
+	std::vector<std::string_view> modList;
+	for (auto &modEntry : GetModEntries()) {
+		if (*modEntry.enabled)
+			modList.emplace_back(modEntry.name);
+	}
+	return modList;
+}
+
+std::vector<std::string_view> ModOptions::GetModList()
+{
+	std::vector<std::string_view> modList;
+	for (auto &modEntry : GetModEntries()) {
+		modList.emplace_back(modEntry.name);
+	}
+	return modList;
+}
+
+std::vector<OptionEntryBase *> ModOptions::GetEntries()
+{
+	std::vector<OptionEntryBase *> optionEntries;
+	for (auto &modEntry : GetModEntries()) {
+		optionEntries.emplace_back(&modEntry.enabled);
+	}
+	return optionEntries;
+}
+
+std::vector<ModOptions::ModEntry> &ModOptions::GetModEntries()
+{
+	if (modEntries)
+		return *modEntries;
+
+	std::vector<std::string> modNames = ini->getKeys(key);
+
+	// Add mods available by default:
+	for (const std::string_view modName : { "clock" }) {
+		if (c_find(modNames, modName) != modNames.end()) continue;
+		ini->set(key, modName, false);
+		modNames.emplace_back(modName);
+	}
+
+	std::vector<ModOptions::ModEntry> &newModEntries = modEntries.emplace();
+	for (auto &modName : modNames) {
+		newModEntries.emplace_back(modName);
+	}
+	return newModEntries;
+}
+
+ModOptions::ModEntry::ModEntry(std::string_view name)
+    : name(name)
+    , enabled(this->name, OptionEntryFlags::None, this->name.c_str(), "", false)
+{
+	enabled.SetValueChangedCallback(LuaReloadActiveMods);
 }
 
 namespace {
