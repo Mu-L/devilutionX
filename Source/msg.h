@@ -751,11 +751,12 @@ void NetSyncInvItem(const Player &player, int invListIndex);
 void NetSendCmdChItem(bool bHiPri, uint8_t bLoc, bool forceSpellChange = false);
 void NetSendCmdDelItem(bool bHiPri, uint8_t bLoc);
 void NetSendCmdChInvItem(bool bHiPri, int invGridIndex);
-void NetSendCmdChBeltItem(bool bHiPri, int invGridIndex);
+void NetSendCmdChBeltItem(bool bHiPri, int beltIndex);
 void NetSendCmdDamage(bool bHiPri, const Player &player, uint32_t dwDam, DamageType damageType);
 void NetSendCmdMonDmg(bool bHiPri, uint16_t wMon, uint32_t dwDam);
 void NetSendCmdString(uint32_t pmask, const char *pszStr);
 void delta_close_portal(const Player &player);
-size_t ParseCmd(uint8_t pnum, const TCmd *pCmd);
+bool ValidateCmdSize(size_t requiredCmdSize, size_t maxCmdSize, size_t playerId);
+size_t ParseCmd(uint8_t pnum, const TCmd *pCmd, size_t maxCmdSize);
 
 } // namespace devilution

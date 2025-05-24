@@ -442,10 +442,11 @@ void ClrAllMonsters()
 		monster.position.old = { 0, 0 };
 		monster.direction = static_cast<Direction>(GenerateRnd(8));
 		monster.animInfo = {};
-		monster.flags = 0;
+		monster.flags = MFLAG_NO_ENEMY;
 		monster.isInvalid = false;
-		monster.enemy = GenerateRnd(gbActivePlayers);
-		monster.enemyPosition = Players[monster.enemy].position.future;
+		monster.enemy = 0;
+		monster.enemyPosition = {};
+		DiscardRandomValues(1);
 	}
 }
 
@@ -581,13 +582,21 @@ tl::expected<void, std::string> LoadDiabMonsts()
 
 void DeleteMonster(size_t activeIndex)
 {
-	const Monster &monster = Monsters[ActiveMonsters[activeIndex]];
+	const unsigned monsterId = ActiveMonsters[activeIndex];
+	const Monster &monster = Monsters[monsterId];
 	if ((monster.flags & MFLAG_BERSERK) != 0) {
 		AddUnLight(monster.lightId);
 	}
 
 	ActiveMonsterCount--;
 	std::swap(ActiveMonsters[activeIndex], ActiveMonsters[ActiveMonsterCount]); // This ensures alive monsters are before ActiveMonsterCount in the array and any deleted monster after
+
+	for (size_t i = 0; i < ActiveMonsterCount; i++) {
+		Monster &activeMonster = Monsters[ActiveMonsters[i]];
+		if ((activeMonster.flags & MFLAG_TARGETS_MONSTER) != 0 && activeMonster.enemy == monsterId) {
+			activeMonster.flags |= MFLAG_NO_ENEMY;
+		}
+	}
 }
 
 void NewMonsterAnim(Monster &monster, MonsterGraphic graphic, Direction md, AnimationDistributionFlags flags = AnimationDistributionFlags::None, int8_t numSkippedFrames = 0, int8_t distributeFramesBeforeFrame = 0)
@@ -1212,10 +1221,12 @@ void MonsterAttackPlayer(Monster &monster, Player &player, int hit, int minDam, 
 
 void MonsterAttackEnemy(Monster &monster, int hit, int minDam, int maxDam)
 {
-	if ((monster.flags & MFLAG_TARGETS_MONSTER) != 0)
-		MonsterAttackMonster(monster, Monsters[monster.enemy], hit, minDam, maxDam);
-	else
-		MonsterAttackPlayer(monster, Players[monster.enemy], hit, minDam, maxDam);
+	if ((monster.flags & MFLAG_NO_ENEMY) == 0) {
+		if ((monster.flags & MFLAG_TARGETS_MONSTER) != 0)
+			MonsterAttackMonster(monster, Monsters[monster.enemy], hit, minDam, maxDam);
+		else
+			MonsterAttackPlayer(monster, Players[monster.enemy], hit, minDam, maxDam);
+	}
 }
 
 bool MonsterAttack(Monster &monster)
@@ -1747,7 +1758,7 @@ bool AiPlanPath(Monster &monster)
 	}
 
 	bool clear = LineClear(
-	    [&monster](Point position) { return IsTileAvailable(monster, position); },
+	    [&monster](Point position) { return (IsTileWalkable(position) && IsTileSafe(monster, position)); },
 	    monster.position.tile,
 	    monster.enemyPosition);
 	if (!clear || (monster.pathCount >= 5 && monster.pathCount < 8)) {
@@ -3021,7 +3032,7 @@ bool IsRelativeMoveOK(const Monster &monster, Point position, Direction mdir)
 	return true;
 }
 
-bool IsMonsterAvalible(const MonsterData &monsterData)
+bool IsMonsterAvailable(const MonsterData &monsterData)
 {
 	if (monsterData.availability == MonsterAvailability::Never)
 		return false;
@@ -3327,7 +3338,7 @@ tl::expected<void, std::string> GetLevelMTypes()
 			int skeletonTypeCount = 0;
 			_monster_id skeltypes[NUM_MTYPES];
 			for (_monster_id skeletonType : SkeletonTypes) {
-				if (!IsMonsterAvalible(MonstersData[skeletonType]))
+				if (!IsMonsterAvailable(MonstersData[skeletonType]))
 					continue;
 
 				skeltypes[skeletonTypeCount++] = skeletonType;
@@ -3338,8 +3349,8 @@ tl::expected<void, std::string> GetLevelMTypes()
 		_monster_id typelist[MaxMonsters];
 
 		int nt = 0;
-		for (int i = MT_NZOMBIE; i < NUM_MTYPES; i++) {
-			if (!IsMonsterAvalible(MonstersData[i]))
+		for (size_t i = 0; i < MonstersData.size(); i++) {
+			if (!IsMonsterAvailable(MonstersData[i]))
 				continue;
 
 			typelist[nt++] = (_monster_id)i;
@@ -3577,15 +3588,17 @@ tl::expected<void, std::string> InitMonsters()
 				numscattypes++;
 			}
 		}
-		while (ActiveMonsterCount < totalmonsters) {
-			const size_t typeIndex = scattertypes[GenerateRnd(numscattypes)];
-			if (currlevel == 1 || FlipCoin())
-				na = 1;
-			else if (currlevel == 2 || leveltype == DTYPE_CRYPT)
-				na = GenerateRnd(2) + 2;
-			else
-				na = GenerateRnd(3) + 3;
-			PlaceGroup(typeIndex, na);
+		if (numscattypes > 0) {
+			while (ActiveMonsterCount < totalmonsters) {
+				const size_t typeIndex = scattertypes[GenerateRnd(numscattypes)];
+				if (currlevel == 1 || FlipCoin())
+					na = 1;
+				else if (currlevel == 2 || leveltype == DTYPE_CRYPT)
+					na = GenerateRnd(2) + 2;
+				else
+					na = GenerateRnd(3) + 3;
+				PlaceGroup(typeIndex, na);
+			}
 		}
 	}
 	for (int i = 0; i < nt; i++) {
@@ -4054,6 +4067,20 @@ void DeleteMonsterList()
 	}
 }
 
+void RemoveEnemyReferences(const Player &player)
+{
+	if (&player == MyPlayer || !player.isOnActiveLevel())
+		return;
+
+	const size_t playerId = player.getId();
+	for (size_t i = 0; i < ActiveMonsterCount; i++) {
+		Monster &activeMonster = Monsters[ActiveMonsters[i]];
+		if ((activeMonster.flags & MFLAG_TARGETS_MONSTER) == 0 && activeMonster.enemy == playerId) {
+			activeMonster.flags |= MFLAG_NO_ENEMY;
+		}
+	}
+}
+
 void ProcessMonsters()
 {
 	DeleteMonsterList();
@@ -4075,7 +4102,8 @@ void ProcessMonsters()
 			monster.hitPoints = std::min(monster.hitPoints, monster.maxHitPoints); // prevent going over max HP with part of a single regen tick
 		}
 
-		if (IsTileVisible(monster.position.tile) && monster.activeForTicks == 0) {
+		const bool isMonsterVisible = IsTileVisible(monster.position.tile);
+		if (isMonsterVisible && monster.activeForTicks == 0) {
 			if (monster.type().type == MT_CLEAVER) {
 				PlaySFX(SfxID::ButcherGreeting);
 			}
@@ -4094,22 +4122,29 @@ void ProcessMonsters()
 			UpdateEnemy(monster);
 		}
 
-		if ((monster.flags & MFLAG_TARGETS_MONSTER) != 0) {
-			assert(monster.enemy >= 0 && monster.enemy < MaxMonsters);
-			// BUGFIX: enemy target may be dead at time of access, thus reading garbage data from `Monsters[monster.enemy].position.future`.
-			monster.position.last = Monsters[monster.enemy].position.future;
-			monster.enemyPosition = monster.position.last;
-		} else {
-			assert(monster.enemy >= 0 && monster.enemy < MAX_PLRS);
-			Player &player = Players[monster.enemy];
-			monster.enemyPosition = player.position.future;
-			if (IsTileVisible(monster.position.tile)) {
+		if ((monster.flags & MFLAG_NO_ENEMY) == 0) {
+			if ((monster.flags & MFLAG_TARGETS_MONSTER) != 0) {
+				assert(monster.enemy >= 0 && monster.enemy < MaxMonsters);
+				monster.position.last = Monsters[monster.enemy].position.future;
+				monster.enemyPosition = monster.position.last;
+			} else {
+				assert(monster.enemy >= 0 && monster.enemy < MAX_PLRS);
+				Player &player = Players[monster.enemy];
+				monster.enemyPosition = player.position.future;
+				if (isMonsterVisible) {
+					monster.position.last = player.position.future;
+				}
+			}
+		}
+
+		if ((monster.flags & MFLAG_TARGETS_MONSTER) == 0) {
+			if (isMonsterVisible) {
 				monster.activeForTicks = UINT8_MAX;
-				monster.position.last = player.position.future;
 			} else if (monster.activeForTicks != 0 && monster.type().type != MT_DIABLO) {
 				monster.activeForTicks--;
 			}
 		}
+
 		while (true) {
 			if ((monster.flags & MFLAG_SEARCH) == 0 || !AiPlanPath(monster)) {
 				AiProc[static_cast<int8_t>(monster.ai)](monster);
@@ -4452,7 +4487,7 @@ void MissToMonst(Missile &missile, Point position)
 
 	Point oldPosition = missile.position.tile;
 	monster.occupyTile(position, false);
-	monster.direction = static_cast<Direction>(missile._mimfnum);
+	monster.direction = missile.getDirection();
 	monster.position.tile = position;
 	M_StartStand(monster, monster.direction);
 	M_StartHit(monster, 0);
